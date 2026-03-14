@@ -1,0 +1,55 @@
+[project]
+name = "foreign-whispers-projects"
+version = "0.1.0"
+description = "Foreign Whispers: YouTube video dubbing pipeline (download, transcribe, translate, TTS, video stitching)"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0",
+    "torchaudio>=2.0",
+    "TTS>=0.22.0",
+    "pytube",
+    "youtube-transcript-api",
+    "openai-whisper",
+    "moviepy",
+    "argostranslate",
+    "streamlit",
+    "fastapi>=0.115",
+    "uvicorn[standard]",
+    "python-multipart",
+    "pydantic-settings",
+    "pyrubberband",
+    "librosa",
+    "soundfile",
+    "pydub",
+    "requests",
+    "setuptools<81",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "httpx",
+]
+
+[tool.uv]
+constraint-dependencies = [
+    "onnxruntime<1.24",
+    "numpy<2",
+    "transformers<4.46",
+]
+find-links = [
+    "https://download.pytorch.org/whl/cu128",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
