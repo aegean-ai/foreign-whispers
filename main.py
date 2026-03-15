@@ -49,6 +49,19 @@ if settings.cors_enabled:
     )
 
 
+from routers.download import router as download_router
+from routers.transcribe import router as transcribe_router
+from routers.translate import router as translate_router
+from routers.tts import router as tts_router
+from routers.stitch import router as stitch_router
+
+app.include_router(download_router)
+app.include_router(transcribe_router)
+app.include_router(translate_router)
+app.include_router(tts_router)
+app.include_router(stitch_router)
+
+
 @app.get("/healthz")
 async def healthz():
     """Health check endpoint."""

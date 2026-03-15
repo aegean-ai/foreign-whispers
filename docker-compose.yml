@@ -1,0 +1,104 @@
+services:
+  # ── STT (Speech-to-Text) ─────────────────────────────────────────────
+  whisper:
+    container_name: foreign-whispers-stt
+    image: ghcr.io/speaches-ai/speaches:latest-cuda-12.6.3
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - whisper-cache:/home/ubuntu/.cache/huggingface/hub
+    environment:
+      - WHISPER__MODEL=Systran/faster-whisper-medium
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://0.0.0.0:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── TTS (Text-to-Speech) ─────────────────────────────────────────────
+  xtts:
+    container_name: foreign-whispers-tts
+    build:
+      context: https://github.com/widlers/XTTS2-Docker.git
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    shm_size: "8gb"
+    ports:
+      - "8020:8020"
+    environment:
+      - COQUI_TOS_AGREED=1
+      - USE_CACHE=true
+      - STREAM_MODE=false
+      - DEVICE=cuda
+      - OUTPUT=/app/output
+      - SPEAKER=/app/speakers
+      - MODEL=/app/xtts_models
+    volumes:
+      - xtts-models:/app/xtts_models
+      - ./speakers:/app/speakers
+      - xtts-output:/app/output
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ── API (FastAPI backend) ────────────────────────────────────────────
+  api:
+    container_name: foreign-whispers-api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8000"
+    command: ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      - XTTS_API_URL=http://xtts:8020
+      - FW_WHISPER_MODEL=base
+      - FW_TTS_MODEL_NAME=tts_models/es/css10/vits
+    volumes:
+      - ./ui:/app/ui
+    depends_on:
+      xtts:
+        condition: service_started
+
+  # ── App (Streamlit UI) ──────────────────────────────────────────────
+  app:
+    container_name: foreign-whispers-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      - WHISPER_API_URL=http://whisper:8000
+      - XTTS_API_URL=http://xtts:8020
+    volumes:
+      - ./ui:/app/ui
+      - ./transcriptions_en:/app/transcriptions_en
+      - ./transcriptions_es:/app/transcriptions_es
+    depends_on:
+      api:
+        condition: service_started
+      whisper:
+        condition: service_healthy
+      xtts:
+        condition: service_started
+
+volumes:
+  whisper-cache:
+  xtts-models:
+  xtts-output:
