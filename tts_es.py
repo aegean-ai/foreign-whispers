@@ -59,10 +59,18 @@ def _make_tts_engine():
         pass
 
     # Fallback: local Coqui TTS (for dev/test without Docker)
+    import functools
     import torch
     from TTS.api import TTS as CoquiTTS
-    from TTS.utils.radam import RAdam
-    torch.serialization.add_safe_globals([RAdam])
+    # Coqui TTS checkpoints contain classes (RAdam, defaultdict, etc.) that
+    # PyTorch 2.6+ rejects with weights_only=True.  Monkey-patch torch.load
+    # to default to weights_only=False for these trusted model files.
+    _original_torch_load = torch.load
+    @functools.wraps(_original_torch_load)
+    def _patched_load(*args, **kwargs):
+        kwargs.setdefault("weights_only", False)
+        return _original_torch_load(*args, **kwargs)
+    torch.load = _patched_load
     device = "cuda" if torch.cuda.is_available() else "cpu"
     return CoquiTTS(model_name="tts_models/es/mai/tacotron2-DDC", progress_bar=False).to(device)
 

@@ -8,4 +8,4 @@ superceded/
 docs/
 *.mov
 *.webm
-uv.lock
+.env

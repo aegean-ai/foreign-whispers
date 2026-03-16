@@ -81,6 +81,11 @@ st.write(
 
 
 url = st.text_input("YouTube URL")
+
+if not url:
+    st.info("Paste a YouTube URL above to get started.")
+    st.stop()
+
 vid_id, title = get_video_info(url)
 st.write(title)
 
