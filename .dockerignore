@@ -1,0 +1,11 @@
+.venv/
+.git/
+.beads/
+.pytest_cache/
+__pycache__/
+*.pyc
+superceded/
+docs/
+*.mov
+*.webm
+uv.lock
