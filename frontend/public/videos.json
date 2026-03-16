@@ -1,0 +1,26 @@
+[
+  {
+    "id": "7hPDiwJOHl4",
+    "title": "Pete Hegseth: The 60 Minutes Interview",
+    "url": "https://www.youtube.com/watch?v=7hPDiwJOHl4",
+    "has_demo": true,
+    "demo_assets": {
+      "transcript_en": "/demo/7hPDiwJOHl4/transcript_en.json",
+      "transcript_es": "/demo/7hPDiwJOHl4/transcript_es.json",
+      "audio": "/demo/7hPDiwJOHl4/audio.wav",
+      "video": "/demo/7hPDiwJOHl4/video.mp4"
+    }
+  },
+  {
+    "id": "G3Eup4mfJdA",
+    "title": "Volodymyr Zelenskyy: The 60 Minutes Interview",
+    "url": "https://www.youtube.com/watch?v=G3Eup4mfJdA",
+    "has_demo": false
+  },
+  {
+    "id": "480OGItLZNo",
+    "title": "Vladimir Putin: The 60 Minutes Interview",
+    "url": "https://www.youtube.com/watch?v=480OGItLZNo",
+    "has_demo": false
+  }
+]
