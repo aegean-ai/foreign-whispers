@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -34,6 +35,10 @@ class Settings(BaseSettings):
     s3_secret_key: str = ""
 
     # PostgreSQL
+    database_url: str = ""
+    database_echo: bool = False
+
+    # Backwards-compatible alias so FW_POSTGRES_DSN still works.
     postgres_dsn: str = ""
 
     # vLLM / external inference
@@ -44,6 +49,13 @@ class Settings(BaseSettings):
     whisper_api_url: str = "http://localhost:8000"
 
     model_config = {"env_prefix": "FW_"}
+
+    @model_validator(mode="after")
+    def _sync_postgres_dsn_alias(self) -> "Settings":
+        """If database_url is empty but postgres_dsn was set, copy it over."""
+        if not self.database_url and self.postgres_dsn:
+            self.database_url = self.postgres_dsn
+        return self
 
 
 settings = Settings()

@@ -6,6 +6,17 @@ from api.src.core.config import Settings
 from api.src.services.storage_service import StorageBackend, get_storage_backend
 
 
+async def get_db():  # noqa: ANN201
+    """Re-export of :func:`api.src.db.engine.get_db`.
+
+    Imported lazily so the module doesn't break when sqlalchemy is absent.
+    """
+    from api.src.db.engine import get_db as _get_db
+
+    async for session in _get_db():
+        yield session
+
+
 @lru_cache
 def get_settings() -> Settings:
     """Return a cached Settings instance for use with FastAPI Depends."""
