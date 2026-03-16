@@ -14,4 +14,4 @@ pydub
 requests
 setuptools<81
 numpy<2
-transformers<4.46
+transformers<4.54
