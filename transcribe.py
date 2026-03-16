@@ -40,7 +40,7 @@ def transcribe_videos(video_directory: str, model, destination_folder: str):
 
 if __name__ == '__main__':
     video_folder = "./videos"
-    destination_folder = "./transcriptions_en"
+    destination_folder = "./data/transcriptions/en"
     pathlib.Path(destination_folder).mkdir(parents=True, exist_ok=True)
     model = load_model("tiny")
     transcribe_videos(video_folder, model, destination_folder)

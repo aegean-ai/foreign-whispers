@@ -82,8 +82,8 @@ def translate_all_files(source_directory, destination_directory, from_code="en",
 if __name__ == '__main__':
     from_code = 'en'
     to_code = 'es'
-    source_directory = "./transcriptions_en"
-    destination_directory = "./transcriptions_es"
+    source_directory = "./data/transcriptions/en"
+    destination_directory = "./data/transcriptions/es"
     
     download_and_install_package(from_code, to_code)
     translate_all_files(source_directory, destination_directory)

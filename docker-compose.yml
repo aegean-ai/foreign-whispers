@@ -44,7 +44,7 @@ services:
       - MODEL=/app/xtts_models
     volumes:
       - xtts-models:/app/xtts_models
-      - ./speakers:/app/speakers
+      - ./data/speakers:/app/speakers
       - xtts-output:/app/output
     deploy:
       resources:
@@ -88,8 +88,8 @@ services:
       - XTTS_API_URL=http://xtts:8020
     volumes:
       - ./ui:/app/ui
-      - ./transcriptions_en:/app/transcriptions_en
-      - ./transcriptions_es:/app/transcriptions_es
+      - ./data/transcriptions/en:/app/data/transcriptions/en
+      - ./data/transcriptions/es:/app/data/transcriptions/es
     depends_on:
       api:
         condition: service_started

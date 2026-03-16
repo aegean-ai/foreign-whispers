@@ -160,8 +160,7 @@ superceded/
 audios/
 captions/
 output_logs/
-transcriptions_en/
-transcriptions_es/
+data/transcriptions/
 ui/
 
 # Django runtime (removed, kept for safety)

@@ -199,7 +199,7 @@ def text_file_to_speech(source_path, output_path, tts_engine=None):
 
 
 if __name__ == '__main__':
-    SOURCE_PATH = "./transcriptions_es"
+    SOURCE_PATH = "./data/transcriptions/es"
     OUTPUT_PATH = "./audios/"
 
     pathlib.Path(OUTPUT_PATH).mkdir(parents=True, exist_ok=True)
