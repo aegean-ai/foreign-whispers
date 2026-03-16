@@ -6,6 +6,7 @@ import json
 import pathlib
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 
 from api.src.core.config import settings
 from api.src.services.tts_service import TTSService
@@ -58,3 +59,21 @@ async def tts_endpoint(video_id: str, request: Request):
         "video_id": video_id,
         "audio_path": str(wav_path),
     }
+
+
+@router.get("/audio/{video_id}")
+async def get_audio(video_id: str):
+    """Stream the TTS-synthesized WAV audio."""
+    trans_dir = settings.ui_dir / "translated_transcription"
+    audio_dir = settings.ui_dir / "translated_audio"
+
+    svc = TTSService(ui_dir=settings.ui_dir, tts_engine=None)
+    title = svc.title_for_video_id(video_id, trans_dir)
+    if title is None:
+        raise HTTPException(status_code=404, detail="Audio not found")
+
+    audio_path = audio_dir / f"{title}.wav"
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    return FileResponse(str(audio_path), media_type="audio/wav")
