@@ -60,6 +60,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: cpu
     restart: unless-stopped
     ports:
       - "8080:8000"
@@ -70,33 +71,33 @@ services:
       - FW_TTS_MODEL_NAME=tts_models/es/css10/vits
     volumes:
       - ./ui:/app/ui
+      - ./cookies.txt:/app/cookies.txt
+      - ./data/transcriptions/en:/app/data/transcriptions/en
+      - ./data/transcriptions/es:/app/data/transcriptions/es
     depends_on:
       xtts:
         condition: service_started
 
-  # ── App (Streamlit UI) ──────────────────────────────────────────────
-  app:
-    container_name: foreign-whispers-app
+  # ── Frontend (Next.js) ──────────────────────────────────────────────
+  frontend:
+    container_name: foreign-whispers-frontend
     build:
-      context: .
+      context: ./frontend
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "8501:8501"
+      - "8501:3000"
     environment:
-      - WHISPER_API_URL=http://whisper:8000
-      - XTTS_API_URL=http://xtts:8020
-    volumes:
-      - ./ui:/app/ui
-      - ./data/transcriptions/en:/app/data/transcriptions/en
-      - ./data/transcriptions/es:/app/data/transcriptions/es
+      - API_URL=http://api:8000
     depends_on:
       api:
         condition: service_started
-      whisper:
-        condition: service_healthy
-      xtts:
-        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 volumes:
   whisper-cache:
