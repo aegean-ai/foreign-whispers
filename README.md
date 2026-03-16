@@ -60,6 +60,10 @@ Docker Compose (includes Whisper + XTTS GPU services):
 docker compose up
 ```
 
+## Pitch Video
+
+[Pete Hegseth: The 60 Minutes Interview](https://www.youtube.com/watch?v=7hPDiwJOHl4) — sample 60 Minutes episode used to demonstrate the Foreign Whispers dubbing pipeline.
+
 ## Milestones
 
 1. Download videos + captions from YouTube (pytube / yt-dlp)
