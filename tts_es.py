@@ -61,6 +61,8 @@ def _make_tts_engine():
     # Fallback: local Coqui TTS (for dev/test without Docker)
     import torch
     from TTS.api import TTS as CoquiTTS
+    from TTS.utils.radam import RAdam
+    torch.serialization.add_safe_globals([RAdam])
     device = "cuda" if torch.cuda.is_available() else "cpu"
     return CoquiTTS(model_name="tts_models/es/mai/tacotron2-DDC", progress_bar=False).to(device)
 
