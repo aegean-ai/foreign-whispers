@@ -161,7 +161,7 @@ audios/
 captions/
 output_logs/
 data/transcriptions/
-ui/
+/ui/
 
 # Django runtime (removed, kept for safety)
 whispers/
