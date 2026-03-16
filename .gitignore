@@ -14,8 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -169,6 +169,7 @@ whispers/
 # OAuth credentials and tokens (never commit)
 credentials_desktop_app.json
 token.json
+cookies.txt
 
 # ML model weights and caches (downloaded at runtime)
 *.pb
@@ -181,3 +182,6 @@ whisper_models/
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+
+# Superpowers brainstorming mockups
+.superpowers/
