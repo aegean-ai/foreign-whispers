@@ -1,0 +1,17 @@
+torch>=2.0
+torchaudio>=2.0
+TTS>=0.22.0
+pytube
+youtube-transcript-api
+openai-whisper
+moviepy<2
+argostranslate
+streamlit
+pyrubberband
+librosa
+soundfile
+pydub
+requests
+setuptools<81
+numpy<2
+transformers<4.46
