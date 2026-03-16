@@ -20,7 +20,7 @@ def client(monkeypatch, ui_dir):
     monkeypatch.setattr("whisper.load_model", lambda *a, **kw: MagicMock())
     monkeypatch.setattr("TTS.api.TTS", lambda *a, **kw: MagicMock())
 
-    from core.config import settings
+    from api.src.core.config import settings
 
     monkeypatch.setattr(settings, "ui_dir", ui_dir)
 
@@ -47,16 +47,16 @@ def test_translate_returns_translated_segments(client, monkeypatch, ui_dir):
     src.write_text(json.dumps(_fake_transcript()))
 
     monkeypatch.setattr(
-        "routers.translate._title_for_video_id",
+        "api.src.routers.translate._title_for_video_id",
         lambda vid_id, d: "Test Title",
     )
     # Stub argos translate to just upper-case text
     monkeypatch.setattr(
-        "routers.translate.translate_sentence",
+        "api.src.routers.translate.translate_sentence",
         lambda text, fc, tc: text.upper(),
     )
     monkeypatch.setattr(
-        "routers.translate.download_and_install_package",
+        "api.src.routers.translate.download_and_install_package",
         lambda fc, tc: None,
     )
 
@@ -74,15 +74,15 @@ def test_translate_persists_json(client, monkeypatch, ui_dir):
     src.write_text(json.dumps(_fake_transcript()))
 
     monkeypatch.setattr(
-        "routers.translate._title_for_video_id",
+        "api.src.routers.translate._title_for_video_id",
         lambda vid_id, d: "Test Title",
     )
     monkeypatch.setattr(
-        "routers.translate.translate_sentence",
+        "api.src.routers.translate.translate_sentence",
         lambda text, fc, tc: text.upper(),
     )
     monkeypatch.setattr(
-        "routers.translate.download_and_install_package",
+        "api.src.routers.translate.download_and_install_package",
         lambda fc, tc: None,
     )
 
@@ -97,7 +97,7 @@ def test_translate_persists_json(client, monkeypatch, ui_dir):
 def test_translate_skips_if_cached(client, monkeypatch, ui_dir):
     """Skip re-translation when output JSON already exists (fixes 5ss)."""
     monkeypatch.setattr(
-        "routers.translate._title_for_video_id",
+        "api.src.routers.translate._title_for_video_id",
         lambda vid_id, d: "Test Title",
     )
 
@@ -116,9 +116,9 @@ def test_translate_skips_if_cached(client, monkeypatch, ui_dir):
         translate_called["count"] += 1
         return text
 
-    monkeypatch.setattr("routers.translate.translate_sentence", tracking_translate)
+    monkeypatch.setattr("api.src.routers.translate.translate_sentence", tracking_translate)
     monkeypatch.setattr(
-        "routers.translate.download_and_install_package", lambda fc, tc: None
+        "api.src.routers.translate.download_and_install_package", lambda fc, tc: None
     )
 
     resp = client.post("/api/translate/G3Eup4mfJdA?target_language=es")
@@ -129,7 +129,7 @@ def test_translate_skips_if_cached(client, monkeypatch, ui_dir):
 def test_translate_source_not_found(client, monkeypatch, ui_dir):
     """Returns 404 when source transcription doesn't exist."""
     monkeypatch.setattr(
-        "routers.translate._title_for_video_id",
+        "api.src.routers.translate._title_for_video_id",
         lambda vid_id, d: None,
     )
 

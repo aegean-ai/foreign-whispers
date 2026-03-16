@@ -63,7 +63,7 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8000"
-    command: ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["uv", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8000"]
     environment:
       - XTTS_API_URL=http://xtts:8020
       - FW_WHISPER_MODEL=base

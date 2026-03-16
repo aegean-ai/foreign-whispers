@@ -20,7 +20,7 @@ def client(monkeypatch, ui_dir):
     monkeypatch.setattr("whisper.load_model", lambda *a, **kw: MagicMock())
     monkeypatch.setattr("TTS.api.TTS", lambda *a, **kw: MagicMock())
 
-    from core.config import settings
+    from api.src.core.config import settings
 
     monkeypatch.setattr(settings, "ui_dir", ui_dir)
 
@@ -46,7 +46,7 @@ def test_tts_returns_audio_path(client, monkeypatch, ui_dir):
     src.write_text(json.dumps(_translated_transcript()))
 
     monkeypatch.setattr(
-        "routers.tts._title_for_video_id",
+        "api.src.routers.tts._title_for_video_id",
         lambda vid_id, d: "Test Title",
     )
     # Stub text_file_to_speech to create a fake WAV
@@ -54,7 +54,7 @@ def test_tts_returns_audio_path(client, monkeypatch, ui_dir):
         wav = pathlib.Path(output_path) / "Test Title.wav"
         wav.write_bytes(b"RIFF" + b"\x00" * 100)
 
-    monkeypatch.setattr("routers.tts.text_file_to_speech", fake_tts)
+    monkeypatch.setattr("api.src.routers.tts.text_file_to_speech", fake_tts)
 
     resp = client.post("/api/tts/G3Eup4mfJdA")
     assert resp.status_code == 200
@@ -66,7 +66,7 @@ def test_tts_returns_audio_path(client, monkeypatch, ui_dir):
 def test_tts_skips_if_cached(client, monkeypatch, ui_dir):
     """Skip TTS if WAV already exists."""
     monkeypatch.setattr(
-        "routers.tts._title_for_video_id",
+        "api.src.routers.tts._title_for_video_id",
         lambda vid_id, d: "Test Title",
     )
 
@@ -79,7 +79,7 @@ def test_tts_skips_if_cached(client, monkeypatch, ui_dir):
     def tracking_tts(source_path, output_path, tts_engine):
         tts_called["count"] += 1
 
-    monkeypatch.setattr("routers.tts.text_file_to_speech", tracking_tts)
+    monkeypatch.setattr("api.src.routers.tts.text_file_to_speech", tracking_tts)
 
     resp = client.post("/api/tts/G3Eup4mfJdA")
     assert resp.status_code == 200
@@ -89,7 +89,7 @@ def test_tts_skips_if_cached(client, monkeypatch, ui_dir):
 def test_tts_source_not_found(client, monkeypatch, ui_dir):
     """Returns 404 when translated transcript doesn't exist."""
     monkeypatch.setattr(
-        "routers.tts._title_for_video_id",
+        "api.src.routers.tts._title_for_video_id",
         lambda vid_id, d: None,
     )
 
@@ -103,7 +103,7 @@ def test_tts_runs_in_threadpool(client, monkeypatch, ui_dir):
     src.write_text(json.dumps(_translated_transcript()))
 
     monkeypatch.setattr(
-        "routers.tts._title_for_video_id",
+        "api.src.routers.tts._title_for_video_id",
         lambda vid_id, d: "Test Title",
     )
 
@@ -113,7 +113,7 @@ def test_tts_runs_in_threadpool(client, monkeypatch, ui_dir):
         wav = pathlib.Path(output_path) / "Test Title.wav"
         wav.write_bytes(b"RIFF" + b"\x00" * 100)
 
-    monkeypatch.setattr("routers.tts.text_file_to_speech", fake_tts)
+    monkeypatch.setattr("api.src.routers.tts.text_file_to_speech", fake_tts)
 
     # Patch asyncio.get_event_loop().run_in_executor to track usage
     import asyncio
@@ -124,7 +124,7 @@ def test_tts_runs_in_threadpool(client, monkeypatch, ui_dir):
         executor_used["yes"] = True
         return fn(*args)
 
-    monkeypatch.setattr("routers.tts._run_in_threadpool", tracking_run)
+    monkeypatch.setattr("api.src.routers.tts._run_in_threadpool", tracking_run)
 
     resp = client.post("/api/tts/G3Eup4mfJdA")
     assert resp.status_code == 200

@@ -22,7 +22,7 @@ def client(monkeypatch, ui_dir):
     monkeypatch.setattr("whisper.load_model", lambda *a, **kw: MagicMock())
     monkeypatch.setattr("TTS.api.TTS", lambda *a, **kw: MagicMock())
 
-    from core.config import settings
+    from api.src.core.config import settings
 
     monkeypatch.setattr(settings, "ui_dir", ui_dir)
 
@@ -49,7 +49,7 @@ def test_transcribe_returns_segments(client, monkeypatch, ui_dir):
 
     # Mock get_video_info to map video_id → title
     monkeypatch.setattr(
-        "routers.transcribe._title_for_video_id",
+        "api.src.routers.transcribe._title_for_video_id",
         lambda vid_id, video_dir: "Test Title",
     )
 
@@ -72,7 +72,7 @@ def test_transcribe_saves_json(client, monkeypatch, ui_dir):
     (ui_dir / "raw_video" / "Test Title.mp4").write_bytes(b"fake-video")
 
     monkeypatch.setattr(
-        "routers.transcribe._title_for_video_id",
+        "api.src.routers.transcribe._title_for_video_id",
         lambda vid_id, video_dir: "Test Title",
     )
 
@@ -91,7 +91,7 @@ def test_transcribe_saves_json(client, monkeypatch, ui_dir):
 def test_transcribe_skips_if_cached(client, monkeypatch, ui_dir):
     """If transcription JSON already exists, don't re-run Whisper."""
     monkeypatch.setattr(
-        "routers.transcribe._title_for_video_id",
+        "api.src.routers.transcribe._title_for_video_id",
         lambda vid_id, video_dir: "Test Title",
     )
 
@@ -111,7 +111,7 @@ def test_transcribe_skips_if_cached(client, monkeypatch, ui_dir):
 def test_transcribe_video_not_found(client, monkeypatch, ui_dir):
     """Returns 404 when video file doesn't exist."""
     monkeypatch.setattr(
-        "routers.transcribe._title_for_video_id",
+        "api.src.routers.transcribe._title_for_video_id",
         lambda vid_id, video_dir: None,
     )
 
