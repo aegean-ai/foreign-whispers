@@ -156,6 +156,10 @@ superceded/
 *.webm
 *.mov
 
+# Exception: demo assets for frontend
+!frontend/public/demo/**/*.mp4
+!frontend/public/demo/**/*.wav
+
 # Generated data directories (pipeline outputs, not source)
 audios/
 captions/
