@@ -2,43 +2,14 @@
 
 import json
 import pathlib
-import re
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, field_validator
 
 from api.src.core.config import settings
+from api.src.schemas.download import CaptionSegment, DownloadRequest, DownloadResponse
 from download_video import download_caption, download_video, get_video_info
 
 router = APIRouter(prefix="/api")
-
-_YT_RE = re.compile(
-    r"^https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)[\w-]{11}"
-)
-
-
-class DownloadRequest(BaseModel):
-    url: str
-
-    @field_validator("url")
-    @classmethod
-    def validate_youtube_url(cls, v: str) -> str:
-        if not _YT_RE.match(v):
-            raise ValueError("Invalid YouTube URL")
-        return v
-
-
-class CaptionSegment(BaseModel):
-    start: float
-    end: float | None = None
-    text: str
-    duration: float | None = None
-
-
-class DownloadResponse(BaseModel):
-    video_id: str
-    title: str
-    caption_segments: list[CaptionSegment]
 
 
 def _read_caption_segments(caption_path: pathlib.Path) -> list[dict]:

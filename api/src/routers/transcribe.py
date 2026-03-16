@@ -4,25 +4,11 @@ import json
 import pathlib
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
 
 from api.src.core.config import settings
+from api.src.schemas.transcribe import TranscribeResponse, TranscribeSegment
 
 router = APIRouter(prefix="/api")
-
-
-class TranscribeSegment(BaseModel):
-    id: int | None = None
-    start: float
-    end: float
-    text: str
-
-
-class TranscribeResponse(BaseModel):
-    video_id: str
-    language: str
-    text: str
-    segments: list[TranscribeSegment]
 
 
 def _title_for_video_id(video_id: str, video_dir: pathlib.Path) -> str | None:
