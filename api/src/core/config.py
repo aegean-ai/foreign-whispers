@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     whisper_model: str = "base"
     tts_model_name: str = "tts_models/es/css10/vits"
 
+    # Backend selection: "local" or "remote"
+    whisper_backend: str = "local"
+    tts_backend: str = "local"
+
     # File paths
     base_dir: Path = Path(__file__).resolve().parent.parent.parent.parent
     ui_dir: Path = base_dir / "ui"
