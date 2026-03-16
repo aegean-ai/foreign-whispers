@@ -1,0 +1,33 @@
+"""HTTP-agnostic service wrapping translated_output.py functions."""
+
+import pathlib
+from pathlib import Path
+
+from translated_output import stitch_video_with_timestamps
+
+
+class StitchService:
+    """Thin wrapper around the video stitching pipeline.
+
+    Takes *ui_dir* via constructor so the caller controls file paths.
+    """
+
+    def __init__(self, ui_dir: Path) -> None:
+        self.ui_dir = ui_dir
+
+    def stitch(
+        self,
+        video_path: str,
+        caption_path: str,
+        audio_path: str,
+        output_path: str,
+    ) -> None:
+        """Produce a dubbed video with burned-in subtitles."""
+        stitch_video_with_timestamps(video_path, caption_path, audio_path, output_path)
+
+    @staticmethod
+    def title_for_video_id(video_id: str, search_dir: pathlib.Path) -> str | None:
+        """Find a title by scanning *search_dir* for MP4 files."""
+        for f in search_dir.glob("*.mp4"):
+            return f.stem
+        return None

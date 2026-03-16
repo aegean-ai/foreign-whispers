@@ -46,15 +46,15 @@ def test_tts_returns_audio_path(client, monkeypatch, ui_dir):
     src.write_text(json.dumps(_translated_transcript()))
 
     monkeypatch.setattr(
-        "api.src.routers.tts._title_for_video_id",
-        lambda vid_id, d: "Test Title",
+        "api.src.services.tts_service.TTSService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
     )
     # Stub text_file_to_speech to create a fake WAV
     def fake_tts(source_path, output_path, tts_engine):
         wav = pathlib.Path(output_path) / "Test Title.wav"
         wav.write_bytes(b"RIFF" + b"\x00" * 100)
 
-    monkeypatch.setattr("api.src.routers.tts.text_file_to_speech", fake_tts)
+    monkeypatch.setattr("api.src.services.tts_service.tts_text_file_to_speech", fake_tts)
 
     resp = client.post("/api/tts/G3Eup4mfJdA")
     assert resp.status_code == 200
@@ -66,8 +66,8 @@ def test_tts_returns_audio_path(client, monkeypatch, ui_dir):
 def test_tts_skips_if_cached(client, monkeypatch, ui_dir):
     """Skip TTS if WAV already exists."""
     monkeypatch.setattr(
-        "api.src.routers.tts._title_for_video_id",
-        lambda vid_id, d: "Test Title",
+        "api.src.services.tts_service.TTSService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
     )
 
     # Pre-create the WAV
@@ -79,7 +79,7 @@ def test_tts_skips_if_cached(client, monkeypatch, ui_dir):
     def tracking_tts(source_path, output_path, tts_engine):
         tts_called["count"] += 1
 
-    monkeypatch.setattr("api.src.routers.tts.text_file_to_speech", tracking_tts)
+    monkeypatch.setattr("api.src.services.tts_service.tts_text_file_to_speech", tracking_tts)
 
     resp = client.post("/api/tts/G3Eup4mfJdA")
     assert resp.status_code == 200
@@ -89,8 +89,8 @@ def test_tts_skips_if_cached(client, monkeypatch, ui_dir):
 def test_tts_source_not_found(client, monkeypatch, ui_dir):
     """Returns 404 when translated transcript doesn't exist."""
     monkeypatch.setattr(
-        "api.src.routers.tts._title_for_video_id",
-        lambda vid_id, d: None,
+        "api.src.services.tts_service.TTSService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: None,
     )
 
     resp = client.post("/api/tts/NONEXISTENT")
@@ -103,8 +103,8 @@ def test_tts_runs_in_threadpool(client, monkeypatch, ui_dir):
     src.write_text(json.dumps(_translated_transcript()))
 
     monkeypatch.setattr(
-        "api.src.routers.tts._title_for_video_id",
-        lambda vid_id, d: "Test Title",
+        "api.src.services.tts_service.TTSService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
     )
 
     executor_used = {"yes": False}
@@ -113,7 +113,7 @@ def test_tts_runs_in_threadpool(client, monkeypatch, ui_dir):
         wav = pathlib.Path(output_path) / "Test Title.wav"
         wav.write_bytes(b"RIFF" + b"\x00" * 100)
 
-    monkeypatch.setattr("api.src.routers.tts.text_file_to_speech", fake_tts)
+    monkeypatch.setattr("api.src.services.tts_service.tts_text_file_to_speech", fake_tts)
 
     # Patch asyncio.get_event_loop().run_in_executor to track usage
     import asyncio

@@ -7,15 +7,9 @@ from fastapi import APIRouter, HTTPException, Request
 
 from api.src.core.config import settings
 from api.src.schemas.transcribe import TranscribeResponse, TranscribeSegment
+from api.src.services.transcription_service import TranscriptionService
 
 router = APIRouter(prefix="/api")
-
-
-def _title_for_video_id(video_id: str, video_dir: pathlib.Path) -> str | None:
-    """Find the video title by scanning raw_video for files."""
-    for mp4 in video_dir.glob("*.mp4"):
-        return mp4.stem
-    return None
 
 
 @router.post("/transcribe/{video_id}", response_model=TranscribeResponse)
@@ -25,7 +19,12 @@ async def transcribe_endpoint(video_id: str, request: Request):
     raw_transcription_dir = settings.ui_dir / "raw_transcription"
     raw_transcription_dir.mkdir(parents=True, exist_ok=True)
 
-    title = _title_for_video_id(video_id, raw_video_dir)
+    svc = TranscriptionService(
+        ui_dir=settings.ui_dir,
+        whisper_model=request.app.state.whisper_model,
+    )
+
+    title = svc.title_for_video_id(video_id, raw_video_dir)
     if title is None:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
 
@@ -42,8 +41,7 @@ async def transcribe_endpoint(video_id: str, request: Request):
         )
 
     video_path = raw_video_dir / f"{title}.mp4"
-    model = request.app.state.whisper_model
-    result = model.transcribe(str(video_path))
+    result = svc.transcribe(str(video_path))
 
     # Persist result
     transcript_path.write_text(json.dumps(result))

@@ -8,16 +8,11 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from api.src.core.config import settings
-from translated_output import stitch_video_with_timestamps
+from api.src.services.stitch_service import StitchService
 
 router = APIRouter(prefix="/api")
 
-
-def _title_for_video_id(video_id: str, video_dir: pathlib.Path) -> str | None:
-    """Find a title by scanning for MP4 files in video_dir."""
-    for f in video_dir.glob("*.mp4"):
-        return f.stem
-    return None
+_stitch_service = StitchService(ui_dir=settings.ui_dir)
 
 
 @router.post("/stitch/{video_id}")
@@ -29,7 +24,7 @@ async def stitch_endpoint(video_id: str):
     output_dir = settings.ui_dir / "translated_video"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    title = _title_for_video_id(video_id, raw_video_dir)
+    title = _stitch_service.title_for_video_id(video_id, raw_video_dir)
     if title is None:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
 
@@ -48,7 +43,7 @@ async def stitch_endpoint(video_id: str):
     await loop.run_in_executor(
         None,
         functools.partial(
-            stitch_video_with_timestamps,
+            _stitch_service.stitch,
             video_path,
             caption_path,
             audio_path,
@@ -64,7 +59,7 @@ async def get_video(video_id: str):
     """Stream the dubbed MP4."""
     output_dir = settings.ui_dir / "translated_video"
 
-    title = _title_for_video_id(video_id, settings.ui_dir / "raw_video")
+    title = _stitch_service.title_for_video_id(video_id, settings.ui_dir / "raw_video")
     if title is None:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
 

@@ -47,16 +47,16 @@ def test_translate_returns_translated_segments(client, monkeypatch, ui_dir):
     src.write_text(json.dumps(_fake_transcript()))
 
     monkeypatch.setattr(
-        "api.src.routers.translate._title_for_video_id",
-        lambda vid_id, d: "Test Title",
+        "api.src.services.translation_service.TranslationService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
     )
     # Stub argos translate to just upper-case text
     monkeypatch.setattr(
-        "api.src.routers.translate.translate_sentence",
+        "api.src.services.translation_service.translate_sentence",
         lambda text, fc, tc: text.upper(),
     )
     monkeypatch.setattr(
-        "api.src.routers.translate.download_and_install_package",
+        "api.src.services.translation_service.download_and_install_package",
         lambda fc, tc: None,
     )
 
@@ -74,15 +74,15 @@ def test_translate_persists_json(client, monkeypatch, ui_dir):
     src.write_text(json.dumps(_fake_transcript()))
 
     monkeypatch.setattr(
-        "api.src.routers.translate._title_for_video_id",
-        lambda vid_id, d: "Test Title",
+        "api.src.services.translation_service.TranslationService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
     )
     monkeypatch.setattr(
-        "api.src.routers.translate.translate_sentence",
+        "api.src.services.translation_service.translate_sentence",
         lambda text, fc, tc: text.upper(),
     )
     monkeypatch.setattr(
-        "api.src.routers.translate.download_and_install_package",
+        "api.src.services.translation_service.download_and_install_package",
         lambda fc, tc: None,
     )
 
@@ -97,8 +97,8 @@ def test_translate_persists_json(client, monkeypatch, ui_dir):
 def test_translate_skips_if_cached(client, monkeypatch, ui_dir):
     """Skip re-translation when output JSON already exists (fixes 5ss)."""
     monkeypatch.setattr(
-        "api.src.routers.translate._title_for_video_id",
-        lambda vid_id, d: "Test Title",
+        "api.src.services.translation_service.TranslationService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
     )
 
     # Pre-populate cached translation
@@ -116,9 +116,9 @@ def test_translate_skips_if_cached(client, monkeypatch, ui_dir):
         translate_called["count"] += 1
         return text
 
-    monkeypatch.setattr("api.src.routers.translate.translate_sentence", tracking_translate)
+    monkeypatch.setattr("api.src.services.translation_service.translate_sentence", tracking_translate)
     monkeypatch.setattr(
-        "api.src.routers.translate.download_and_install_package", lambda fc, tc: None
+        "api.src.services.translation_service.download_and_install_package", lambda fc, tc: None
     )
 
     resp = client.post("/api/translate/G3Eup4mfJdA?target_language=es")
@@ -129,8 +129,8 @@ def test_translate_skips_if_cached(client, monkeypatch, ui_dir):
 def test_translate_source_not_found(client, monkeypatch, ui_dir):
     """Returns 404 when source transcription doesn't exist."""
     monkeypatch.setattr(
-        "api.src.routers.translate._title_for_video_id",
-        lambda vid_id, d: None,
+        "api.src.services.translation_service.TranslationService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: None,
     )
 
     resp = client.post("/api/translate/NONEXISTENT?target_language=es")

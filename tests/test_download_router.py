@@ -41,15 +41,15 @@ def test_download_returns_video_id_and_title(client, monkeypatch, ui_dir):
     fake_segments = [{"start": 0.0, "end": 2.5, "text": "Hello world"}]
 
     monkeypatch.setattr(
-        "api.src.routers.download.get_video_info",
+        "api.src.services.download_service.get_video_info",
         lambda url: ("G3Eup4mfJdA", "Test Title"),
     )
     monkeypatch.setattr(
-        "api.src.routers.download.download_video",
+        "api.src.services.download_service.dv_download_video",
         lambda url, dest: str(ui_dir / "raw_video" / "Test Title.mp4"),
     )
     monkeypatch.setattr(
-        "api.src.routers.download.download_caption",
+        "api.src.services.download_service.dv_download_caption",
         lambda url, dest: str(ui_dir / "raw_caption" / "Test Title.txt"),
     )
 
@@ -69,7 +69,7 @@ def test_download_returns_video_id_and_title(client, monkeypatch, ui_dir):
 def test_download_skips_redownload(client, monkeypatch, ui_dir):
     """Calling twice for the same URL should skip re-download."""
     monkeypatch.setattr(
-        "api.src.routers.download.get_video_info",
+        "api.src.services.download_service.get_video_info",
         lambda url: ("G3Eup4mfJdA", "Test Title"),
     )
 
@@ -85,8 +85,8 @@ def test_download_skips_redownload(client, monkeypatch, ui_dir):
         download_called["count"] += 1
         return original_download(url, dest)
 
-    monkeypatch.setattr("api.src.routers.download.download_video", tracking_download)
-    monkeypatch.setattr("api.src.routers.download.download_caption", lambda url, dest: None)
+    monkeypatch.setattr("api.src.services.download_service.dv_download_video", tracking_download)
+    monkeypatch.setattr("api.src.services.download_service.dv_download_caption", lambda url, dest: None)
 
     resp = client.post("/api/download", json={"url": VALID_URL})
     assert resp.status_code == 200

@@ -54,15 +54,15 @@ def test_stitch_returns_video_path(client, monkeypatch, ui_dir):
     _setup_stitch_inputs(ui_dir)
 
     monkeypatch.setattr(
-        "api.src.routers.stitch._title_for_video_id",
-        lambda vid_id, d: "Test Title",
+        "api.src.services.stitch_service.StitchService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
     )
 
     def fake_stitch(video_path, caption_path, audio_path, output_path):
         pathlib.Path(output_path).write_bytes(b"fake-mp4")
 
     monkeypatch.setattr(
-        "api.src.routers.stitch.stitch_video_with_timestamps", fake_stitch
+        "api.src.services.stitch_service.stitch_video_with_timestamps", fake_stitch
     )
 
     resp = client.post("/api/stitch/G3Eup4mfJdA")
@@ -75,8 +75,8 @@ def test_stitch_returns_video_path(client, monkeypatch, ui_dir):
 def test_stitch_skips_if_cached(client, monkeypatch, ui_dir):
     """Skip stitching if output MP4 already exists."""
     monkeypatch.setattr(
-        "api.src.routers.stitch._title_for_video_id",
-        lambda vid_id, d: "Test Title",
+        "api.src.services.stitch_service.StitchService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
     )
 
     (ui_dir / "translated_video" / "Test Title.mp4").write_bytes(b"fake-mp4")
@@ -87,7 +87,7 @@ def test_stitch_skips_if_cached(client, monkeypatch, ui_dir):
         stitch_called["count"] += 1
 
     monkeypatch.setattr(
-        "api.src.routers.stitch.stitch_video_with_timestamps", tracking_stitch
+        "api.src.services.stitch_service.stitch_video_with_timestamps", tracking_stitch
     )
 
     resp = client.post("/api/stitch/G3Eup4mfJdA")
@@ -98,8 +98,8 @@ def test_stitch_skips_if_cached(client, monkeypatch, ui_dir):
 def test_stitch_missing_inputs_returns_404(client, monkeypatch, ui_dir):
     """Returns 404 when prerequisite files don't exist."""
     monkeypatch.setattr(
-        "api.src.routers.stitch._title_for_video_id",
-        lambda vid_id, d: None,
+        "api.src.services.stitch_service.StitchService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: None,
     )
 
     resp = client.post("/api/stitch/NONEXISTENT")
@@ -109,8 +109,8 @@ def test_stitch_missing_inputs_returns_404(client, monkeypatch, ui_dir):
 def test_get_video_streams_mp4(client, monkeypatch, ui_dir):
     """GET /api/video/{video_id} streams the MP4 with correct content type."""
     monkeypatch.setattr(
-        "api.src.routers.stitch._title_for_video_id",
-        lambda vid_id, d: "Test Title",
+        "api.src.services.stitch_service.StitchService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
     )
 
     (ui_dir / "translated_video" / "Test Title.mp4").write_bytes(b"fake-mp4-content")
@@ -124,8 +124,8 @@ def test_get_video_streams_mp4(client, monkeypatch, ui_dir):
 def test_get_video_not_found(client, monkeypatch, ui_dir):
     """GET /api/video/{video_id} returns 404 if video doesn't exist."""
     monkeypatch.setattr(
-        "api.src.routers.stitch._title_for_video_id",
-        lambda vid_id, d: None,
+        "api.src.services.stitch_service.StitchService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: None,
     )
 
     resp = client.get("/api/video/NONEXISTENT")

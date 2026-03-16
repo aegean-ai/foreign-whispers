@@ -47,10 +47,10 @@ def test_transcribe_returns_segments(client, monkeypatch, ui_dir):
     # Create a fake video file matching the expected pattern
     (ui_dir / "raw_video" / "Test Title.mp4").write_bytes(b"fake-video")
 
-    # Mock get_video_info to map video_id → title
+    # Mock title_for_video_id on the TranscriptionService class
     monkeypatch.setattr(
-        "api.src.routers.transcribe._title_for_video_id",
-        lambda vid_id, video_dir: "Test Title",
+        "api.src.services.transcription_service.TranscriptionService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
     )
 
     # Mock whisper transcribe on the model stored in app.state
@@ -72,8 +72,8 @@ def test_transcribe_saves_json(client, monkeypatch, ui_dir):
     (ui_dir / "raw_video" / "Test Title.mp4").write_bytes(b"fake-video")
 
     monkeypatch.setattr(
-        "api.src.routers.transcribe._title_for_video_id",
-        lambda vid_id, video_dir: "Test Title",
+        "api.src.services.transcription_service.TranscriptionService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
     )
 
     from main import app
@@ -91,8 +91,8 @@ def test_transcribe_saves_json(client, monkeypatch, ui_dir):
 def test_transcribe_skips_if_cached(client, monkeypatch, ui_dir):
     """If transcription JSON already exists, don't re-run Whisper."""
     monkeypatch.setattr(
-        "api.src.routers.transcribe._title_for_video_id",
-        lambda vid_id, video_dir: "Test Title",
+        "api.src.services.transcription_service.TranscriptionService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
     )
 
     # Pre-populate cached transcription
@@ -111,8 +111,8 @@ def test_transcribe_skips_if_cached(client, monkeypatch, ui_dir):
 def test_transcribe_video_not_found(client, monkeypatch, ui_dir):
     """Returns 404 when video file doesn't exist."""
     monkeypatch.setattr(
-        "api.src.routers.transcribe._title_for_video_id",
-        lambda vid_id, video_dir: None,
+        "api.src.services.transcription_service.TranscriptionService.title_for_video_id",
+        lambda self_or_vid, vid_or_dir, search_dir=None: None,
     )
 
     resp = client.post("/api/transcribe/NONEXISTENT")

@@ -8,16 +8,9 @@ import pathlib
 from fastapi import APIRouter, HTTPException, Request
 
 from api.src.core.config import settings
-from tts_es import text_file_to_speech
+from api.src.services.tts_service import TTSService
 
 router = APIRouter(prefix="/api")
-
-
-def _title_for_video_id(video_id: str, transcription_dir: pathlib.Path) -> str | None:
-    """Find a title by scanning for JSON files in transcription_dir."""
-    for f in transcription_dir.glob("*.json"):
-        return f.stem
-    return None
 
 
 async def _run_in_threadpool(executor, fn, *args):
@@ -33,7 +26,12 @@ async def tts_endpoint(video_id: str, request: Request):
     audio_dir = settings.ui_dir / "translated_audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
 
-    title = _title_for_video_id(video_id, trans_dir)
+    svc = TTSService(
+        ui_dir=settings.ui_dir,
+        tts_engine=request.app.state.tts_model,
+    )
+
+    title = svc.title_for_video_id(video_id, trans_dir)
     if title is None:
         raise HTTPException(
             status_code=404,
@@ -50,11 +48,10 @@ async def tts_endpoint(video_id: str, request: Request):
         }
 
     source_path = str(trans_dir / f"{title}.json")
-    tts_engine = request.app.state.tts_model
 
     # Run TTS in thread pool to avoid blocking the event loop
     await _run_in_threadpool(
-        None, text_file_to_speech, source_path, str(audio_dir), tts_engine
+        None, svc.text_file_to_speech, source_path, str(audio_dir)
     )
 
     return {
