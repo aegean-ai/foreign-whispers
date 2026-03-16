@@ -1,7 +1,7 @@
 """Pydantic schemas for the end-to-end pipeline API contract."""
 
 import re
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, field_validator
 
@@ -22,7 +22,7 @@ class PipelineRequest(BaseModel):
         return v
 
 
-class PipelineStatus(str, Enum):
+class PipelineStatus(StrEnum):
     PENDING = "pending"
     DOWNLOADING = "downloading"
     TRANSCRIBING = "transcribing"
