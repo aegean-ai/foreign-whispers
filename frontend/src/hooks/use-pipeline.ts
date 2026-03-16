@@ -44,7 +44,7 @@ type Action =
   | { type: "SELECT_STAGE"; stage: PipelineStage }
   | { type: "PIPELINE_COMPLETE" }
   | { type: "RESET" }
-  | { type: "DEMO_COMPLETE"; results: Record<PipelineStage, unknown> };
+  | { type: "DEMO_COMPLETE"; videoId: string; results: Record<PipelineStage, unknown> };
 
 function reducer(state: PipelineState, action: Action): PipelineState {
   switch (action.type) {
@@ -110,6 +110,7 @@ function reducer(state: PipelineState, action: Action): PipelineState {
       return {
         ...state,
         status: "complete",
+        videoId: action.videoId,
         stages,
         selectedStage: "stitch",
         isDemo: true,
@@ -138,6 +139,7 @@ export function usePipeline() {
     ]);
     dispatch({
       type: "DEMO_COMPLETE",
+      videoId: video.id,
       results: {
         download: { video_id: video.id, title: video.title, caption_segments: [] },
         transcribe: enRes,
