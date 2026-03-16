@@ -1,0 +1,88 @@
+{"issue_id":"fw-012","label":"deployment"}
+{"issue_id":"fw-012","label":"m6"}
+{"issue_id":"fw-012","label":"task"}
+{"issue_id":"fw-381","label":"fastapi"}
+{"issue_id":"fw-381","label":"m4"}
+{"issue_id":"fw-381","label":"m6"}
+{"issue_id":"fw-381","label":"task"}
+{"issue_id":"fw-4f0","label":"bug"}
+{"issue_id":"fw-4f0","label":"m1"}
+{"issue_id":"fw-4f0","label":"setup"}
+{"issue_id":"fw-58f","label":"fastapi"}
+{"issue_id":"fw-58f","label":"m2"}
+{"issue_id":"fw-58f","label":"m6"}
+{"issue_id":"fw-58f","label":"task"}
+{"issue_id":"fw-5ss","label":"bug"}
+{"issue_id":"fw-5ss","label":"m3"}
+{"issue_id":"fw-5ss","label":"performance"}
+{"issue_id":"fw-6e1","label":"bug"}
+{"issue_id":"fw-6e1","label":"portability"}
+{"issue_id":"fw-901","label":"m5a"}
+{"issue_id":"fw-901","label":"task"}
+{"issue_id":"fw-b54","label":"restructure fastapi"}
+{"issue_id":"fw-b54.1","label":"restructure cleanup"}
+{"issue_id":"fw-b54.1","label":"restructure fastapi"}
+{"issue_id":"fw-b54.10","label":"restructure fastapi"}
+{"issue_id":"fw-b54.10","label":"restructure tests"}
+{"issue_id":"fw-b54.11","label":"restructure auraison"}
+{"issue_id":"fw-b54.11","label":"restructure fastapi"}
+{"issue_id":"fw-b54.12","label":"restructure docs"}
+{"issue_id":"fw-b54.12","label":"restructure fastapi"}
+{"issue_id":"fw-b54.2","label":"restructure fastapi"}
+{"issue_id":"fw-b54.2","label":"restructure services"}
+{"issue_id":"fw-b54.3","label":"restructure fastapi"}
+{"issue_id":"fw-b54.3","label":"restructure schemas"}
+{"issue_id":"fw-b54.4","label":"restructure core"}
+{"issue_id":"fw-b54.4","label":"restructure fastapi"}
+{"issue_id":"fw-b54.5","label":"restructure fastapi"}
+{"issue_id":"fw-b54.5","label":"restructure routers"}
+{"issue_id":"fw-b54.6","label":"restructure fastapi"}
+{"issue_id":"fw-b54.6","label":"restructure inference"}
+{"issue_id":"fw-b54.7","label":"restructure fastapi"}
+{"issue_id":"fw-b54.7","label":"restructure storage s3"}
+{"issue_id":"fw-b54.8","label":"restructure database"}
+{"issue_id":"fw-b54.8","label":"restructure fastapi"}
+{"issue_id":"fw-b54.9","label":"restructure docker"}
+{"issue_id":"fw-b54.9","label":"restructure fastapi"}
+{"issue_id":"fw-by5","label":"fastapi"}
+{"issue_id":"fw-by5","label":"m1"}
+{"issue_id":"fw-by5","label":"m6"}
+{"issue_id":"fw-by5","label":"task"}
+{"issue_id":"fw-c0m","label":"fastapi"}
+{"issue_id":"fw-c0m","label":"m3"}
+{"issue_id":"fw-c0m","label":"m6"}
+{"issue_id":"fw-c0m","label":"task"}
+{"issue_id":"fw-c42","label":"epic"}
+{"issue_id":"fw-c42","label":"fastapi"}
+{"issue_id":"fw-c42","label":"m6"}
+{"issue_id":"fw-c42","label":"migration"}
+{"issue_id":"fw-ccu","label":"audio-sync"}
+{"issue_id":"fw-ccu","label":"bug"}
+{"issue_id":"fw-ccu","label":"m4"}
+{"issue_id":"fw-fo6","label":"bug"}
+{"issue_id":"fw-fo6","label":"m1"}
+{"issue_id":"fw-fzm","label":"fastapi"}
+{"issue_id":"fw-fzm","label":"m5a"}
+{"issue_id":"fw-fzm","label":"m6"}
+{"issue_id":"fw-fzm","label":"task"}
+{"issue_id":"fw-gcd","label":"m4"}
+{"issue_id":"fw-gcd","label":"migration"}
+{"issue_id":"fw-gcd","label":"tts"}
+{"issue_id":"fw-iwa","label":"docs"}
+{"issue_id":"fw-iwa","label":"m5a"}
+{"issue_id":"fw-iy7","label":"deployment"}
+{"issue_id":"fw-iy7","label":"fastapi"}
+{"issue_id":"fw-iy7","label":"m6"}
+{"issue_id":"fw-iy7","label":"task"}
+{"issue_id":"fw-jhg","label":"deployment"}
+{"issue_id":"fw-jhg","label":"m5a"}
+{"issue_id":"fw-jhg","label":"task"}
+{"issue_id":"fw-nl2","label":"m4"}
+{"issue_id":"fw-nl2","label":"migration"}
+{"issue_id":"fw-nl2","label":"tts"}
+{"issue_id":"fw-r7s","label":"fastapi"}
+{"issue_id":"fw-r7s","label":"m6"}
+{"issue_id":"fw-r7s","label":"task"}
+{"issue_id":"fw-ttl","label":"bug"}
+{"issue_id":"fw-ttl","label":"dependency"}
+{"issue_id":"fw-ttl","label":"m5a"}
