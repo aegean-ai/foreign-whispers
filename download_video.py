@@ -68,12 +68,14 @@ def download_video(url, destination_folder):
 def download_caption(url, destination_folder):
     """download english captions to <video_title.txt> in destination_folder, skipping if file already exists"""
     video_id, title = get_video_info(url)
-    save_path = pathlib.Path(destination_folder) / (title + ".txt")
+    safe_title = title.replace(":", "")
+    save_path = pathlib.Path(destination_folder) / (safe_title + ".txt")
     if save_path.exists():
         print(f"Skipping captions (already exists): {title}")
         return str(save_path)
     print(f"Downloading captions for {title}... ", end=" ", flush=True)
-    caption = YouTubeTranscriptApi.get_transcript(video_id)
+    api = YouTubeTranscriptApi()
+    caption = api.fetch(video_id).to_raw_data()
     with open(save_path, 'w') as outfile:
         for segment in caption:
             outfile.write(json.dumps(segment) + "\n")

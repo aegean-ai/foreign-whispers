@@ -3,7 +3,7 @@
 import pathlib
 from pathlib import Path
 
-from translated_output import stitch_video_with_timestamps
+from translated_output import stitch_audio, stitch_video_with_timestamps
 
 
 class StitchService:
@@ -15,6 +15,15 @@ class StitchService:
     def __init__(self, ui_dir: Path) -> None:
         self.ui_dir = ui_dir
 
+    def stitch_audio_only(
+        self,
+        video_path: str,
+        audio_path: str,
+        output_path: str,
+    ) -> None:
+        """Replace video audio with dubbed TTS — no subtitle burn-in."""
+        stitch_audio(video_path, audio_path, output_path)
+
     def stitch(
         self,
         video_path: str,
@@ -22,7 +31,7 @@ class StitchService:
         audio_path: str,
         output_path: str,
     ) -> None:
-        """Produce a dubbed video with burned-in subtitles."""
+        """Produce a dubbed video with burned-in subtitles (legacy)."""
         stitch_video_with_timestamps(video_path, caption_path, audio_path, output_path)
 
     @staticmethod

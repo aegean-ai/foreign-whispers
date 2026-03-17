@@ -26,7 +26,9 @@ class Settings(BaseSettings):
 
     # File paths
     base_dir: Path = Path(__file__).resolve().parent.parent.parent.parent
-    ui_dir: Path = base_dir / "ui"
+    data_dir: Path = base_dir / "pipeline_data"
+    # Legacy alias — kept for backwards compatibility with volume mounts
+    ui_dir: Path = data_dir
 
     # S3 storage
     s3_bucket: str = ""

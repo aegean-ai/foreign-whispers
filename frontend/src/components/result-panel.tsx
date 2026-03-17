@@ -11,7 +11,7 @@ import type {
   TranscribeResponse,
   TranslateResponse,
 } from "@/lib/types";
-import { getAudioUrl, getVideoUrl } from "@/lib/api";
+import { getAudioUrl, getCaptionsUrl, getOriginalCaptionsUrl, getOriginalVideoUrl, getVideoUrl } from "@/lib/api";
 import { TranscriptView } from "./transcript-view";
 import { TranslationView } from "./translation-view";
 import { AudioPlayer } from "./audio-player";
@@ -28,11 +28,7 @@ export function ResultPanel({ state, transcribeResult, onRetry }: ResultPanelPro
   const stageState = state.stages[stage];
 
   if (stageState.status === "pending") {
-    return (
-      <div className="flex h-[500px] items-center justify-center text-muted-foreground">
-        Waiting to start...
-      </div>
-    );
+    return null;
   }
 
   if (stageState.status === "active") {
@@ -105,18 +101,17 @@ function StageResult({
 
     case "tts": {
       const videoId = state.videoId!;
-      const src = state.isDemo
-        ? ((result as { audio_path: string }).audio_path)
-        : getAudioUrl(videoId);
-      return <AudioPlayer src={src} />;
+      return <AudioPlayer src={getAudioUrl(videoId)} />;
     }
 
     case "stitch": {
       const videoId = state.videoId!;
-      const src = state.isDemo
-        ? ((result as { video_path: string }).video_path)
-        : getVideoUrl(videoId);
-      return <VideoPlayer src={src} title="Foreign Whispers — Dubbed Video" />;
+      return (
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <VideoPlayer src={getOriginalVideoUrl(videoId)} captionsSrc={getOriginalCaptionsUrl(videoId)} captionsLang="en" captionsLabel="English" title="Original (English)" />
+          <VideoPlayer src={getVideoUrl(videoId)} captionsSrc={getCaptionsUrl(videoId)} title="Dubbed (Spanish)" />
+        </div>
+      );
     }
 
     default:

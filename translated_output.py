@@ -13,8 +13,7 @@
 import os
 import shutil
 
-from moviepy.editor import VideoFileClip, TextClip, concatenate_videoclips, AudioFileClip, CompositeVideoClip, CompositeAudioClip
-from moviepy.video.tools.subtitles import SubtitlesClip
+from moviepy.editor import VideoFileClip, TextClip, AudioFileClip, CompositeVideoClip, CompositeAudioClip
 import json
 import pathlib
 from moviepy.config import change_settings
@@ -59,16 +58,29 @@ if _im_bin:
 
 
 def stitch_audio(video_path: str, audio_path: str, output_path: str):
-    """Replace video audio track with the given audio file."""
-    print("Stitching audio...")
+    """Replace video audio track with the dubbed audio using ffmpeg remux.
+
+    Uses -c:v copy to avoid re-encoding video frames — instant and lossless.
+    """
+    import subprocess
+
+    print("Stitching audio (ffmpeg remux)...")
     pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    videoclip = VideoFileClip(video_path)
-    audioclip = AudioFileClip(audio_path)
-
-    new_audioclip = CompositeAudioClip([audioclip])
-    videoclip.audio = new_audioclip
-    videoclip.write_videofile(output_path)
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", video_path,
+        "-i", audio_path,
+        "-c:v", "copy",        # copy video stream without re-encoding
+        "-map", "0:v:0",       # take video from first input
+        "-map", "1:a:0",       # take audio from second input
+        "-shortest",           # stop when shortest stream ends
+        output_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed: {result.stderr}")
+    print("Stitching done.")
 
 
 # not needed as our converted foramat is already in seconds, but keeping this to generalise for any data
@@ -103,15 +115,14 @@ def stitch_video_with_timestamps(video_path, caption_path, audio_path, output_pa
             subtitles.append((start_seconds, end_seconds, text))
 
     # Create TextClips for each subtitle
-    text_clips = [TextClip(subtitle[2], fontsize=24, color='white', bg_color='black')
+    text_clips = [TextClip(subtitle[2], fontsize=24, color='white', bg_color='black', font='DejaVu-Sans')
                   .set_pos(('center', 'bottom'))
                   .set_start(subtitle[0])
                   .set_end(subtitle[1])
                   for subtitle in subtitles]
 
-    # Concatenate TextClips and overlay on the video
-    subtitle_clip = concatenate_videoclips(text_clips)
-    video_with_subtitles = CompositeVideoClip([video_clip, subtitle_clip])
+    # Overlay each TextClip directly — they already have start/end/pos set
+    video_with_subtitles = CompositeVideoClip([video_clip] + text_clips)
 
     # Create a composite audio clip with both video and additional audio
     final_audio_clip = CompositeAudioClip([video_with_subtitles.audio, audio_clip])
@@ -119,8 +130,19 @@ def stitch_video_with_timestamps(video_path, caption_path, audio_path, output_pa
     # Set audio for the combined video
     video_with_audio = video_with_subtitles.set_audio(final_audio_clip)
 
-    # Write the final video to the output path
-    video_with_audio.write_videofile(output_path, codec="libx264", audio_codec="aac")
+    # Write the final video — try GPU encoding, fall back to CPU
+    codec = "libx264"
+    if os.environ.get("FW_USE_GPU_ENCODE"):
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["ffmpeg", "-encoders"], capture_output=True, text=True, timeout=5
+            )
+            if "h264_nvenc" in result.stdout:
+                codec = "h264_nvenc"
+        except Exception:
+            pass
+    video_with_audio.write_videofile(output_path, codec=codec, audio_codec="aac")
 
 if __name__ == "__main__":
     import sys

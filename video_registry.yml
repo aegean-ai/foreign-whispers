@@ -1,0 +1,29 @@
+# Video Registry — single source of truth for all videos in the pipeline.
+#
+# Each entry maps a YouTube video ID to its metadata.
+# The `filename` field is the stem used for all pipeline artifacts
+# (e.g. "{filename}.mp4", "{filename}.json", "{filename}.vtt").
+#
+# To add a new video, append an entry here and restart the frontend.
+
+videos:
+  - id: 6O3HLPWatuU
+    title: "Alysa Liu: The 60 Minutes Interview"
+    filename: Alysa Liu The 60 Minutes Interview
+    url: https://www.youtube.com/watch?v=6O3HLPWatuU
+    language: en
+    target_language: es
+
+  - id: DLeBquj8LKI
+    title: "Rob Reiner: The 60 Minutes Interview"
+    filename: Rob Reiner The 60 Minutes Interview
+    url: https://www.youtube.com/watch?v=DLeBquj8LKI
+    language: en
+    target_language: es
+
+  - id: IiBKsv-D64M
+    title: "Military Drones: 60 Minutes Full Episodes"
+    filename: Military Drones 60 Minutes Full Episodes
+    url: https://www.youtube.com/watch?v=IiBKsv-D64M
+    language: en
+    target_language: es
