@@ -6,6 +6,8 @@ import pathlib
 from fastapi import APIRouter, HTTPException, Request
 
 from api.src.core.config import settings
+from api.src.core.dependencies import resolve_title
+from api.src.main import get_whisper_model
 from api.src.schemas.transcribe import TranscribeResponse, TranscribeSegment
 from api.src.services.transcription_service import TranscriptionService
 
@@ -15,18 +17,18 @@ router = APIRouter(prefix="/api")
 @router.post("/transcribe/{video_id}", response_model=TranscribeResponse)
 async def transcribe_endpoint(video_id: str, request: Request):
     """Run Whisper transcription on a downloaded video."""
-    raw_video_dir = settings.ui_dir / "raw_video"
-    raw_transcription_dir = settings.ui_dir / "raw_transcription"
+    raw_video_dir = settings.data_dir / "raw_video"
+    raw_transcription_dir = settings.data_dir / "raw_transcription"
     raw_transcription_dir.mkdir(parents=True, exist_ok=True)
 
     svc = TranscriptionService(
-        ui_dir=settings.ui_dir,
-        whisper_model=request.app.state.whisper_model,
+        ui_dir=settings.data_dir,
+        whisper_model=get_whisper_model(request.app),
     )
 
-    title = svc.title_for_video_id(video_id, raw_video_dir)
+    title = resolve_title(video_id)
     if title is None:
-        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found in index")
 
     transcript_path = raw_transcription_dir / f"{title}.json"
 

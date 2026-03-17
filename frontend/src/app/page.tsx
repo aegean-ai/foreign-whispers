@@ -1,14 +1,11 @@
-import { readFile } from "fs/promises";
-import { join } from "path";
 import { PipelinePage } from "@/components/pipeline-page";
 import type { Video } from "@/lib/types";
 
+const API_URL = process.env.API_URL || "http://localhost:8080";
+
 export default async function Home() {
-  const data = await readFile(
-    join(process.cwd(), "public", "videos.json"),
-    "utf-8"
-  );
-  const videos: Video[] = JSON.parse(data);
+  const res = await fetch(`${API_URL}/api/videos`, { cache: "no-store" });
+  const videos: Video[] = res.ok ? await res.json() : [];
 
   return <PipelinePage videos={videos} />;
 }

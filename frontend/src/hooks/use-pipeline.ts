@@ -33,7 +33,6 @@ const INITIAL_STATE: PipelineState = {
   status: "idle",
   stages: initialStages(),
   selectedStage: "download",
-  isDemo: false,
 };
 
 type Action =
@@ -43,8 +42,7 @@ type Action =
   | { type: "STAGE_ERROR"; stage: PipelineStage; error: string }
   | { type: "SELECT_STAGE"; stage: PipelineStage }
   | { type: "PIPELINE_COMPLETE" }
-  | { type: "RESET" }
-  | { type: "DEMO_COMPLETE"; videoId: string; results: Record<PipelineStage, unknown> };
+  | { type: "RESET" };
 
 function reducer(state: PipelineState, action: Action): PipelineState {
   switch (action.type) {
@@ -58,7 +56,6 @@ function reducer(state: PipelineState, action: Action): PipelineState {
         videoId: action.videoId,
         stages: initialStages(),
         selectedStage: "download",
-        isDemo: false,
       };
 
     case "STAGE_ACTIVE":
@@ -102,21 +99,6 @@ function reducer(state: PipelineState, action: Action): PipelineState {
     case "SELECT_STAGE":
       return { ...state, selectedStage: action.stage };
 
-    case "DEMO_COMPLETE": {
-      const stages = {} as Record<PipelineStage, StageState>;
-      for (const s of STAGES) {
-        stages[s] = { status: "complete", result: action.results[s], duration_ms: 0 };
-      }
-      return {
-        ...state,
-        status: "complete",
-        videoId: action.videoId,
-        stages,
-        selectedStage: "stitch",
-        isDemo: true,
-      };
-    }
-
     default:
       return state;
   }
@@ -129,26 +111,6 @@ export function usePipeline() {
     (stage: PipelineStage) => dispatch({ type: "SELECT_STAGE", stage }),
     []
   );
-
-  const loadDemo = useCallback(async (video: Video) => {
-    if (!video.demo_assets) return;
-    const assets = video.demo_assets;
-    const [enRes, esRes] = await Promise.all([
-      fetch(assets.transcript_en).then((r) => r.json()),
-      fetch(assets.transcript_es).then((r) => r.json()),
-    ]);
-    dispatch({
-      type: "DEMO_COMPLETE",
-      videoId: video.id,
-      results: {
-        download: { video_id: video.id, title: video.title, caption_segments: [] },
-        transcribe: enRes,
-        translate: esRes,
-        tts: { video_id: video.id, audio_path: assets.audio },
-        stitch: { video_id: video.id, video_path: assets.video },
-      },
-    });
-  }, []);
 
   const runPipeline = useCallback(async (video: Video) => {
     dispatch({ type: "START", videoId: video.id });
@@ -192,5 +154,5 @@ export function usePipeline() {
 
   const reset = useCallback(() => dispatch({ type: "RESET" }), []);
 
-  return { state, runPipeline, loadDemo, selectStage, reset };
+  return { state, runPipeline, selectStage, reset };
 }

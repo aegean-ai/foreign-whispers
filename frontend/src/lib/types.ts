@@ -2,15 +2,6 @@ export interface Video {
   id: string;
   title: string;
   url: string;
-  has_demo: boolean;
-  demo_assets?: DemoAssets;
-}
-
-export interface DemoAssets {
-  transcript_en: string;
-  transcript_es: string;
-  audio: string;
-  video: string;
 }
 
 export interface CaptionSegment {
@@ -72,5 +63,4 @@ export interface PipelineState {
   stages: Record<PipelineStage, StageState>;
   selectedStage: PipelineStage;
   videoId?: string;
-  isDemo: boolean;
 }

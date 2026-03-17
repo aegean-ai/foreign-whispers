@@ -64,6 +64,18 @@ export function getVideoUrl(videoId: string): string {
   return `/api/video/${videoId}`;
 }
 
+export function getOriginalVideoUrl(videoId: string): string {
+  return `/api/video/${videoId}/original`;
+}
+
 export function getAudioUrl(videoId: string): string {
   return `/api/audio/${videoId}`;
+}
+
+export function getCaptionsUrl(videoId: string): string {
+  return `/api/captions/${videoId}`;
+}
+
+export function getOriginalCaptionsUrl(videoId: string): string {
+  return `/api/captions/${videoId}/original`;
 }

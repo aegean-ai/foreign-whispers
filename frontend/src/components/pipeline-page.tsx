@@ -13,16 +13,12 @@ interface PipelinePageProps {
 }
 
 export function PipelinePage({ videos }: PipelinePageProps) {
-  const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
-  const { state, runPipeline, loadDemo, selectStage, reset } = usePipeline();
+  const [selectedVideo, setSelectedVideo] = useState<Video | null>(videos[0] ?? null);
+  const { state, runPipeline, selectStage, reset } = usePipeline();
 
   const handleStart = () => {
     if (!selectedVideo) return;
-    if (selectedVideo.has_demo) {
-      loadDemo(selectedVideo);
-    } else {
-      runPipeline(selectedVideo);
-    }
+    runPipeline(selectedVideo);
   };
 
   const handleSelectVideo = (video: Video) => {

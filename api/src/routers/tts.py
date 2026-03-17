@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from api.src.core.config import settings
+from api.src.core.dependencies import resolve_title
 from api.src.services.tts_service import TTSService
 
 router = APIRouter(prefix="/api")
@@ -23,21 +24,18 @@ async def _run_in_threadpool(executor, fn, *args):
 @router.post("/tts/{video_id}")
 async def tts_endpoint(video_id: str, request: Request):
     """Generate time-aligned TTS audio for a translated transcript."""
-    trans_dir = settings.ui_dir / "translated_transcription"
-    audio_dir = settings.ui_dir / "translated_audio"
+    trans_dir = settings.data_dir / "translated_transcription"
+    audio_dir = settings.data_dir / "translated_audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
 
     svc = TTSService(
-        ui_dir=settings.ui_dir,
-        tts_engine=request.app.state.tts_model,
+        ui_dir=settings.data_dir,
+        tts_engine=None,  # auto-detect: prefers XTTS GPU container, falls back to local Coqui
     )
 
-    title = svc.title_for_video_id(video_id, trans_dir)
+    title = resolve_title(video_id)
     if title is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Translated transcript for {video_id} not found",
-        )
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found in index")
 
     wav_path = audio_dir / f"{title}.wav"
 
@@ -64,13 +62,12 @@ async def tts_endpoint(video_id: str, request: Request):
 @router.get("/audio/{video_id}")
 async def get_audio(video_id: str):
     """Stream the TTS-synthesized WAV audio."""
-    trans_dir = settings.ui_dir / "translated_transcription"
-    audio_dir = settings.ui_dir / "translated_audio"
+    trans_dir = settings.data_dir / "translated_transcription"
+    audio_dir = settings.data_dir / "translated_audio"
 
-    svc = TTSService(ui_dir=settings.ui_dir, tts_engine=None)
-    title = svc.title_for_video_id(video_id, trans_dir)
+    title = resolve_title(video_id)
     if title is None:
-        raise HTTPException(status_code=404, detail="Audio not found")
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found in index")
 
     audio_path = audio_dir / f"{title}.wav"
     if not audio_path.exists():

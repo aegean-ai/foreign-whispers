@@ -2,7 +2,6 @@
 
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Loader2, Play } from "lucide-react";
 import type { Video } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -31,21 +30,14 @@ export function VideoSelector({
           if (video) onSelectVideo(video);
         }}
       >
-        <SelectTrigger className="w-[400px]">
-          <SelectValue placeholder="Select a video..." />
+        <SelectTrigger className="w-[400px] text-foreground">
+          {selectedVideo ? selectedVideo.title : "Select a video..."}
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
             {videos.map((v) => (
               <SelectItem key={v.id} value={v.id}>
-                <span className="flex items-center gap-2">
-                  {v.title}
-                  {v.has_demo && (
-                    <Badge variant="secondary" className="text-xs">
-                      Demo
-                    </Badge>
-                  )}
-                </span>
+                {v.title}
               </SelectItem>
             ))}
           </SelectGroup>

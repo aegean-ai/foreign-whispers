@@ -6,11 +6,12 @@ import pathlib
 from fastapi import APIRouter, HTTPException, Query
 
 from api.src.core.config import settings
+from api.src.core.dependencies import resolve_title
 from api.src.services.translation_service import TranslationService
 
 router = APIRouter(prefix="/api")
 
-_translation_service = TranslationService(ui_dir=settings.ui_dir)
+_translation_service = TranslationService(ui_dir=settings.data_dir)
 
 
 @router.post("/translate/{video_id}")
@@ -19,13 +20,13 @@ async def translate_endpoint(
     target_language: str = Query(default="es"),
 ):
     """Translate a single video's transcript (fixes issue 5ss — no directory sweep)."""
-    raw_dir = settings.ui_dir / "raw_transcription"
-    out_dir = settings.ui_dir / "translated_transcription"
+    raw_dir = settings.data_dir / "raw_transcription"
+    out_dir = settings.data_dir / "translated_transcription"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    title = _translation_service.title_for_video_id(video_id, raw_dir)
+    title = resolve_title(video_id)
     if title is None:
-        raise HTTPException(status_code=404, detail=f"Transcription for {video_id} not found")
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found in index")
 
     out_path = out_dir / f"{title}.json"
 
