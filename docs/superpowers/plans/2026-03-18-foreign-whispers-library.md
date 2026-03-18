@@ -36,7 +36,7 @@
 ### Modified files
 | File | Change |
 |------|--------|
-| `api/src/core/config.py` | Add `hf_token: str = ""` field |
+| `api/src/core/config.py` | Add `hf_token: str = ""` and `logfire_write_token: str = ""` fields |
 | `api/src/services/tts_service.py` | Add `compute_alignment()` method |
 | `api/src/services/translation_service.py` | Add `rerank_for_duration()` async method |
 | `api/src/main.py` | Register new align router |
@@ -1169,32 +1169,61 @@ git commit -m "build: add hatchling build-system, alignment dep group, and pytes
 
 ---
 
-## Task 9: Add `hf_token` to `Settings` and `compute_alignment()` to `TTSService`
+## Task 9: Add `hf_token` + `logfire_write_token` to `Settings`, configure Logfire in lifespan, and add `compute_alignment()` to `TTSService`
 
 **Files:**
-- Modify: `api/src/core/config.py` (line ~50, after `whisper_api_url`)
+- Modify: `api/src/core/config.py` (after `xtts_api_url`)
+- Modify: `api/src/main.py` (lifespan startup)
 - Modify: `api/src/services/tts_service.py`
 
-- [ ] **Step 1: Add `hf_token` to `Settings` in `api/src/core/config.py`**
+- [ ] **Step 1: Add `hf_token` and `logfire_write_token` to `Settings` in `api/src/core/config.py`**
 
 After the `xtts_api_url` field (line 51), add:
 
 ```python
     # HuggingFace token for pyannote speaker diarization model
     hf_token: str = ""
+
+    # Logfire write token — set via FW_LOGFIRE_WRITE_TOKEN (or put in .env)
+    logfire_write_token: str = ""
 ```
 
-The `env_prefix = "FW_"` means the env var is `FW_HF_TOKEN`.
+The `env_prefix = "FW_"` means env vars are `FW_HF_TOKEN` and `FW_LOGFIRE_WRITE_TOKEN`.
 
-- [ ] **Step 2: Verify settings loads without error**
+- [ ] **Step 2: Configure Logfire in `api/src/main.py` lifespan**
+
+In the `lifespan()` async context manager, add Logfire configuration before the `yield` (after the lazy-model setup lines):
+
+```python
+    # Configure Logfire if a write token is available
+    if settings.logfire_write_token:
+        try:
+            import logfire
+            logfire.configure(
+                write_token=settings.logfire_write_token,
+                service_name="foreign-whispers",
+            )
+            logfire.instrument_fastapi(app)
+            logger.info("Logfire tracing enabled.")
+        except ImportError:
+            logger.info("Logfire not installed — tracing disabled.")
+```
+
+This means the library's `logfire.span(...)` calls in `alignment.py`, `agents.py`, etc. automatically emit to the configured project — no extra wiring needed in the library itself.
+
+- [ ] **Step 3: Verify settings loads without error**
 
 ```bash
-python -c "from api.src.core.config import Settings; s = Settings(); print('hf_token field:', repr(s.hf_token))"
+python -c "from api.src.core.config import Settings; s = Settings(); print('hf_token:', repr(s.hf_token)); print('logfire_write_token set:', bool(s.logfire_write_token))"
 ```
 
-Expected: `hf_token field: ''`
+Expected output (with token in `.env`):
+```
+hf_token: ''
+logfire_write_token set: True
+```
 
-- [ ] **Step 3: Add `compute_alignment()` to `TTSService`**
+- [ ] **Step 4: Add `compute_alignment()` to `TTSService`**
 
 Add after the existing `title_for_video_id` static method in `api/src/services/tts_service.py`:
 
@@ -1216,7 +1245,7 @@ Add after the existing `title_for_video_id` static method in `api/src/services/t
         return global_align(metrics, silence_regions, max_stretch)
 ```
 
-- [ ] **Step 4: Write a unit test for `compute_alignment()`**
+- [ ] **Step 5: Write a unit test for `compute_alignment()`**
 
 Add to a new file `tests/test_tts_service_alignment.py`:
 
@@ -1245,7 +1274,7 @@ def test_compute_alignment_empty_transcripts():
     assert result == []
 ```
 
-- [ ] **Step 5: Run the new test**
+- [ ] **Step 6: Run the new test**
 
 ```bash
 python -m pytest tests/test_tts_service_alignment.py -v
@@ -1253,11 +1282,11 @@ python -m pytest tests/test_tts_service_alignment.py -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add api/src/core/config.py api/src/services/tts_service.py tests/test_tts_service_alignment.py
-git commit -m "feat: add hf_token to Settings and compute_alignment to TTSService"
+git add api/src/core/config.py api/src/main.py api/src/services/tts_service.py tests/test_tts_service_alignment.py
+git commit -m "feat: add hf_token + logfire_write_token to Settings, configure Logfire in lifespan, add compute_alignment to TTSService"
 ```
 
 ---
