@@ -4,8 +4,6 @@ Extracted from notebooks/foreign_whispers_pipeline.ipynb (milestones M3-align,
 M4-align, M6-align).  No external dependencies — stdlib only.
 """
 import dataclasses
-import json
-import statistics
 from enum import Enum
 
 
@@ -90,15 +88,17 @@ def compute_segment_metrics(
     for i, (en_seg, es_seg) in enumerate(
         zip(en_transcript.get("segments", []), es_transcript.get("segments", []))
     ):
+        src_text = en_seg["text"].strip()
+        tgt_text = es_seg["text"].strip()
         metrics.append(SegmentMetrics(
             index             = i,
             source_start      = en_seg["start"],
             source_end        = en_seg["end"],
             source_duration_s = en_seg["end"] - en_seg["start"],
-            source_text       = en_seg["text"].strip(),
-            translated_text   = es_seg["text"].strip(),
-            src_char_count    = len(en_seg["text"]),
-            tgt_char_count    = len(es_seg["text"]),
+            source_text       = src_text,
+            translated_text   = tgt_text,
+            src_char_count    = len(src_text),
+            tgt_char_count    = len(tgt_text),
         ))
     return metrics
 
@@ -124,8 +124,9 @@ def global_align(
 
         if action == AlignAction.GAP_SHIFT:
             gap_shift = m.overflow_s
-        elif action in (AlignAction.MILD_STRETCH, AlignAction.ACCEPT):
+        elif action == AlignAction.MILD_STRETCH:
             stretch = min(m.predicted_stretch, max_stretch)
+        # ACCEPT, REQUEST_SHORTER, FAIL → stretch stays at 1.0
 
         sched_start = m.source_start + cumulative_drift
         sched_end   = sched_start + m.source_duration_s + gap_shift
