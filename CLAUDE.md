@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 4. Translated text → speech via open-source TTS (XTTS v2)
 5. Next.js frontend + FastAPI backend
 
-```
+```text
 foreign-whispers/
 ├── api/src/                     # Layered FastAPI backend
 │   ├── main.py                  # App factory (create_app)
@@ -45,10 +45,10 @@ This host has an NVIDIA GPU; always use the `nvidia` profile:
 docker compose --profile nvidia up -d
 ```
 
-- Frontend (Next.js): http://localhost:8501
-- API (FastAPI): http://localhost:8080
-- STT (Whisper/speaches): http://localhost:8000
-- TTS (XTTS): http://localhost:8020
+- Frontend (Next.js): <http://localhost:8501>
+- API (FastAPI): <http://localhost:8080>
+- STT (Whisper/speaches): <http://localhost:8000>
+- TTS (XTTS): <http://localhost:8020>
 
 After changing Python source or `video_registry.yml`, rebuild the API image:
 
@@ -58,11 +58,13 @@ docker compose --profile nvidia up -d api-gpu
 ```
 
 To stop all services:
+
 ```bash
 docker compose --profile nvidia down
 ```
 
 To tail logs:
+
 ```bash
 docker compose --profile nvidia logs -f
 ```
@@ -75,8 +77,8 @@ docker compose --profile nvidia logs -f
 
 ### Pipeline flow
 
-```
-YouTube URL → yt-dlp download → Whisper STT → argostranslate → XTTS TTS → ffmpeg merge → output video
+```text
+YouTube URL → yt-dlp download → Whisper STT → argostranslate → XTTS TTS → moviepy/ffmpeg stitch → output video
 ```
 
 ### Key design decisions
