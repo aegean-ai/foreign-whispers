@@ -27,3 +27,19 @@ class TTSService:
         for f in search_dir.glob("*.json"):
             return f.stem
         return None
+
+    def compute_alignment(
+        self,
+        en_transcript: dict,
+        es_transcript: dict,
+        silence_regions: list[dict],
+        max_stretch: float = 1.4,
+    ) -> list:
+        """Run global alignment over EN and ES transcripts.
+
+        Returns list[AlignedSegment].  Combines compute_segment_metrics and
+        global_align into a single facade call for use by the align router.
+        """
+        from foreign_whispers.alignment import compute_segment_metrics, global_align
+        metrics = compute_segment_metrics(en_transcript, es_transcript)
+        return global_align(metrics, silence_regions, max_stretch)
