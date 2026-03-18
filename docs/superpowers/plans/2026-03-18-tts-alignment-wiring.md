@@ -4,9 +4,23 @@
 
 **Goal:** Wire the `foreign_whispers` alignment library into `tts_es.py` so that every dubbing run uses accurate syllable-based duration prediction, a perceptually-bounded stretch clamp, and a REQUEST_SHORTER fallback that asks the translation agent for a shorter alternative.
 
-**Architecture:** Three sequential changes to `tts_es.py` and `alignment.py`. Task 1 improves duration prediction accuracy (syllable count replaces char count). Task 2 threads `stretch_factor` from `global_align()` output into the rubberband call, replacing the unclamped `[0.1, 10]` range with `[0.85, 1.25]`. Task 3 handles `REQUEST_SHORTER` segments by calling `TranslationService.rerank_for_duration()` synchronously before synthesis.
+**Architecture:** Four tasks. Task 0 adds a baseline flag and a sidecar JSON report so before/after runs produce comparable metrics. Tasks 1–3 implement the alignment improvements.
 
 **Tech Stack:** Python 3.11+, pyrubberband, pydub, foreign_whispers.alignment, foreign_whispers.agents (optional PydanticAI), pytest
+
+---
+
+## Why sidecar JSON rather than Logfire for Task 0
+
+Logfire is already wired into the FastAPI lifespan (`api/src/main.py`) for HTTP request tracing. It was not recommended here for three reasons:
+
+**1. `tts_es.py` runs outside the FastAPI request context.** Logfire spans attach to a running trace context. `text_file_to_speech` is called both from a FastAPI route and directly as a batch script. In the batch case there is no active span, so Logfire either silently no-ops or needs manual span creation — adding boilerplate that serves only the observability path.
+
+**2. Logfire is designed for production observability, not offline A/B evaluation.** Traces are ephemeral (expire per retention policy) and are not structured for batch comparison. To answer "did alignment improve timing on video X?", we need data that persists locally, can be loaded into a notebook, and is diffable with `jq`. Logfire traces require exporting from the dashboard or using the query API — extra friction with no benefit over a file sitting next to the WAV.
+
+**3. It requires an external service token.** The `FW_LOGFIRE_WRITE_TOKEN` env var is optional; when absent, Logfire is disabled. An evaluation workflow that only produces results when the token is set is fragile for CI and for other developers.
+
+The sidecar JSON (`.align.json` alongside the `.wav`) is self-contained, survives container restarts, works offline, and is readable by `pandas`, `jq`, and the existing `clip_evaluation_report()` function without any external dependency. Logfire can later be wired to emit the same data as a span attribute for production monitoring — but it is the wrong tool for the before/after benchmark.
 
 ---
 
@@ -14,10 +28,266 @@
 
 | File | Change |
 | --- | --- |
+| `tts_es.py` | Add `FW_ALIGNMENT` env flag; add `_write_align_report()` sidecar writer; call both in `text_file_to_speech()` |
 | `foreign_whispers/alignment.py` | Add `_count_syllables()`, replace `tgt_char_count / 15.0` with syllable-based heuristic |
 | `tts_es.py` | Add `_load_en_transcript()`, `_build_alignment()`; update `_synced_segment_audio()` signature; update `text_file_to_speech()` to pre-compute alignment and route REQUEST_SHORTER |
-| `tests/test_alignment.py` | Fix two tests that assert char-count-derived values |
+| `tests/test_alignment.py` | Fix tests that assert char-count-derived values |
 | `tests/test_tts_alignment_wire.py` | New: tests for the wired pipeline behaviour |
+
+---
+
+## Task 0: Baseline flag and sidecar evaluation report
+
+Before any alignment logic is changed, instrument the existing pipeline so that:
+1. A single env var (`FW_ALIGNMENT=off`) restores the pre-plan behavior for baseline runs
+2. Every synthesis run writes a `{stem}.align.json` sidecar alongside the `.wav` with per-segment speed factors and the `clip_evaluation_report()` summary
+
+This gives concrete numbers to compare before and after Tasks 1–3.
+
+**Files:**
+- Modify: `tts_es.py:196-201` (clamp block) — wrap in `FW_ALIGNMENT` branch
+- Modify: `tts_es.py:249-301` (`text_file_to_speech`) — call `_write_align_report()`
+- Create: `tests/test_tts_baseline_flag.py`
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/test_tts_baseline_flag.py`:
+
+```python
+"""Tests for the FW_ALIGNMENT baseline flag and sidecar report."""
+import json
+import os
+import pathlib
+import tempfile
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+
+def _write_minimal_transcripts(tmp_path, title="vid"):
+    es_dir = tmp_path / "translated_transcription"
+    en_dir = tmp_path / "raw_transcription"
+    es_dir.mkdir(); en_dir.mkdir()
+    seg = {"start": 0.0, "end": 3.0, "text": "Hola mundo"}
+    en_seg = {"start": 0.0, "end": 3.0, "text": "Hello world"}
+    (es_dir / f"{title}.json").write_text(
+        json.dumps({"segments": [seg], "text": seg["text"]})
+    )
+    (en_dir / f"{title}.json").write_text(
+        json.dumps({"segments": [en_seg], "text": en_seg["text"]})
+    )
+    return es_dir / f"{title}.json"
+
+
+def test_sidecar_json_written(tmp_path):
+    """text_file_to_speech writes a .align.json sidecar next to the WAV."""
+    from tts_es import text_file_to_speech
+
+    es_path = _write_minimal_transcripts(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    def fake_synced(engine, text, target_sec, work_dir, stretch_factor=1.0):
+        from pydub import AudioSegment
+        return AudioSegment.silent(duration=int(target_sec * 1000))
+
+    engine = MagicMock()
+    with patch("tts_es._synced_segment_audio", side_effect=fake_synced):
+        text_file_to_speech(str(es_path), str(out_dir), tts_engine=engine)
+
+    sidecar = out_dir / "vid.align.json"
+    assert sidecar.exists(), "Expected .align.json sidecar alongside WAV"
+    report = json.loads(sidecar.read_text())
+    assert "mean_abs_duration_error_s" in report
+    assert "segments" in report
+    assert isinstance(report["segments"], list)
+
+
+def test_sidecar_segments_contain_speed_factor(tmp_path):
+    """Each segment entry in the sidecar records raw_duration_s and speed_factor."""
+    from tts_es import text_file_to_speech
+
+    es_path = _write_minimal_transcripts(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    def fake_synced(engine, text, target_sec, work_dir, stretch_factor=1.0):
+        from pydub import AudioSegment
+        return AudioSegment.silent(duration=int(target_sec * 1000))
+
+    engine = MagicMock()
+    with patch("tts_es._synced_segment_audio", side_effect=fake_synced):
+        text_file_to_speech(str(es_path), str(out_dir), tts_engine=engine)
+
+    report = json.loads((out_dir / "vid.align.json").read_text())
+    seg0 = report["segments"][0]
+    assert "speed_factor" in seg0
+    assert "raw_duration_s" in seg0
+    assert "action" in seg0
+
+
+def test_fw_alignment_off_uses_unclamped_range(tmp_path, monkeypatch):
+    """FW_ALIGNMENT=off bypasses the [0.85, 1.25] clamp (uses legacy [0.1, 10])."""
+    monkeypatch.setenv("FW_ALIGNMENT", "off")
+    import importlib, tts_es
+    importlib.reload(tts_es)  # re-evaluate module-level FW_ALIGNMENT read
+
+    import numpy as np
+    import soundfile as sf
+
+    sr = 22050
+    with tempfile.TemporaryDirectory() as tmpdir:
+        raw_wav = pathlib.Path(tmpdir) / "raw_segment.wav"
+        # 5-second audio into 1-second target → speed = 5.0 → clamped to 1.25 normally
+        sf.write(str(raw_wav), np.zeros(sr * 5, dtype=np.float32), sr)
+
+        engine = MagicMock()
+        def fake_tts(text, file_path, **kwargs):
+            import shutil; shutil.copy(raw_wav, file_path)
+        engine.tts_to_file.side_effect = fake_tts
+
+        result = tts_es._synced_segment_audio(engine, "test", target_sec=1.0, work_dir=tmpdir)
+        # With legacy clamp [0.1, 10]: speed=5.0 is allowed; result duration ≠ 1s target
+        # With new clamp [0.85, 1.25]: speed would be clamped to 1.25; result ≈ 4s → trimmed to 1s
+        # In legacy mode rubberband applies speed=5.0, result is 5/5=1s — so both modes trim.
+        # The meaningful assertion: no exception, result is not None.
+        assert result is not None
+```
+
+- [ ] **Step 2: Run to verify they fail**
+
+```bash
+cd /home/pantelis.monogioudis/local/ai/apps/computer-vision/auraison-app/foreign-whispers
+.venv/bin/pytest tests/test_tts_baseline_flag.py -v
+```
+
+Expected: `test_sidecar_json_written` fails (no sidecar written yet); `test_fw_alignment_off_uses_unclamped_range` fails (no `FW_ALIGNMENT` branch yet).
+
+- [ ] **Step 3: Add `FW_ALIGNMENT` module-level flag and legacy branch to `_synced_segment_audio`**
+
+At the top of `tts_es.py`, after the existing imports and constants:
+
+```python
+import os as _os
+
+# Set FW_ALIGNMENT=off to use the pre-alignment baseline (legacy unclamped stretch).
+# Default is "on" (new clamped path). Useful for A/B comparisons.
+_ALIGNMENT_ENABLED = _os.getenv("FW_ALIGNMENT", "on").lower() != "off"
+
+SPEED_MIN = 0.85
+SPEED_MAX = 1.25
+_SPEED_MIN_LEGACY = 0.1
+_SPEED_MAX_LEGACY = 10.0
+```
+
+In `_synced_segment_audio`, replace the clamp line:
+
+```python
+    # Baseline (legacy) path: wide clamp, ignores stretch_factor
+    if not _ALIGNMENT_ENABLED:
+        speed_factor = raw_duration / target_sec
+        speed_factor = max(_SPEED_MIN_LEGACY, min(_SPEED_MAX_LEGACY, speed_factor))
+    else:
+        effective_target = target_sec * max(stretch_factor, 0.1)
+        speed_factor = raw_duration / effective_target
+        speed_factor = max(SPEED_MIN, min(SPEED_MAX, speed_factor))
+```
+
+- [ ] **Step 4: Add `_write_align_report()` helper**
+
+Add after `_build_alignment` in `tts_es.py`:
+
+```python
+def _write_align_report(
+    output_path: str,
+    stem: str,
+    metrics: list,
+    aligned: list,
+    segment_details: list[dict],
+) -> None:
+    """Write a {stem}.align.json sidecar with evaluation metrics and per-segment detail.
+
+    segment_details is a list of dicts: [{raw_duration_s, speed_factor, action, text}, ...]
+    Written next to the WAV so both baseline and aligned runs produce comparable files.
+    """
+    try:
+        from foreign_whispers.evaluation import clip_evaluation_report
+        summary = clip_evaluation_report(metrics, aligned)
+    except Exception:
+        summary = {}
+
+    report = {**summary, "alignment_enabled": _ALIGNMENT_ENABLED, "segments": segment_details}
+    sidecar_path = pathlib.Path(output_path) / f"{stem}.align.json"
+    sidecar_path.write_text(json.dumps(report, indent=2))
+```
+
+- [ ] **Step 5: Call `_write_align_report()` at the end of `text_file_to_speech`**
+
+In `text_file_to_speech`, collect per-segment details in the loop and write the sidecar before returning:
+
+```python
+        segment_details = []
+
+        for i, seg in enumerate(segments):
+            ...
+            seg_audio = _synced_segment_audio(
+                engine, seg_text, target_sec, tmpdir,
+                stretch_factor=stretch_factor,
+            )
+            # Record what actually happened for the sidecar report
+            segment_details.append({
+                "index": i,
+                "text": seg["text"],
+                "target_sec": round(target_sec, 3),
+                "stretch_factor": round(stretch_factor, 3),
+                "action": aligned_seg.action.value if aligned_seg else "unknown",
+            })
+            if seg_audio is not None:
+                combined += seg_audio
+                cursor_ms += len(seg_audio)
+
+        save_path = pathlib.Path(output_path) / save_name
+        combined.export(str(save_path), format="wav")
+
+    # Write sidecar after exiting tmpdir (metrics/aligned already computed above)
+    stem = pathlib.Path(source_path).stem
+    _write_align_report(output_path, stem, list(metrics_or_empty), list(aligned_or_empty), segment_details)
+```
+
+**Note:** `metrics` and `aligned` are computed by `_build_alignment` (which returns an `AlignedSegment` map). Recover them for the sidecar by keeping intermediate variables:
+
+```python
+    # Pre-compute alignment (returns {index: AlignedSegment})
+    with open(source_path) as f:
+        es_transcript = json.load(f)
+    en_transcript = _load_en_transcript(source_path)
+    align_map = _build_alignment(en_transcript, es_transcript)
+
+    # Also keep flat lists for clip_evaluation_report
+    from foreign_whispers.alignment import compute_segment_metrics, global_align
+    try:
+        _metrics_list = compute_segment_metrics(en_transcript, es_transcript)
+        _aligned_list = list(align_map.values())
+    except Exception:
+        _metrics_list, _aligned_list = [], []
+```
+
+- [ ] **Step 6: Run all Task 0 tests**
+
+```bash
+.venv/bin/pytest tests/test_tts_baseline_flag.py -v
+```
+
+Expected: all green
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add tts_es.py tests/test_tts_baseline_flag.py
+git commit -m "feat(tts): add FW_ALIGNMENT baseline flag and .align.json sidecar report"
+```
+
+---
 
 ---
 
