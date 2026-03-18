@@ -227,6 +227,33 @@ self.predicted_tts_s = syllable_count(self.translated_text) / 4.5
 
 Spanish syllabification is rule-based and deterministic, making this a low-risk, high-accuracy improvement.
 
+### Evaluation instrumentation: sidecar JSON vs Logfire
+
+The pipeline needs a way to compare alignment quality before and after the wiring changes. Two instrumentation approaches were considered.
+
+**Logfire** is already wired into the FastAPI lifespan (`api/src/main.py`) for HTTP request tracing. It was evaluated and rejected for evaluation instrumentation for three reasons:
+
+1. **Context mismatch.** `tts_es.py` executes as a synchronous batch process, outside any active FastAPI span. Logfire would require manual span creation with no request context — boilerplate that adds complexity without benefit over a local file.
+2. **Wrong tool for offline A/B evaluation.** Logfire traces are ephemeral (subject to retention policy) and are optimised for production dashboards. To answer "did alignment reduce timing error on video X?", the data must persist locally, survive container restarts, and be loadable into a notebook via `json.load()` or `pandas.read_json()`. Exporting Logfire traces for this purpose requires the dashboard query API — unnecessary friction.
+3. **External service dependency.** Instrumentation that silently produces nothing when `FW_LOGFIRE_WRITE_TOKEN` is absent is fragile for CI and for other developers running the pipeline offline.
+
+**Sidecar JSON** (`.align.json` written alongside each `.wav`) is the chosen approach. Each run of `text_file_to_speech` writes a file containing the `clip_evaluation_report()` summary plus per-segment detail (`speed_factor`, `raw_duration_s`, `action`). The flag `FW_ALIGNMENT=off` restores the pre-plan unclamped stretch path, so both baseline and improved runs are produced from the same code without reverting git history.
+
+The comparison workflow is:
+
+```bash
+# Baseline run
+FW_ALIGNMENT=off python tts_es.py           # writes video.wav + video.align.json
+
+# Improved run
+FW_ALIGNMENT=on  python tts_es.py           # writes video.wav + video.align.json
+
+# Compare
+jq '.mean_abs_duration_error_s, .pct_severe_stretch' baseline/video.align.json aligned/video.align.json
+```
+
+Logfire remains appropriate for the API layer (request latency, error rates in production). The sidecar is the right tool for per-segment ML evaluation. The two can coexist: the sidecar report could optionally be emitted as a Logfire span attribute for production monitoring once the baseline evaluation is complete.
+
 ---
 
 ## References
