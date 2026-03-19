@@ -28,6 +28,7 @@ def client(monkeypatch, ui_dir):
     from api.src.core.config import settings
 
     monkeypatch.setattr(settings, "ui_dir", ui_dir)
+    monkeypatch.setattr(settings, "data_dir", ui_dir)
 
     from main import app
 
@@ -35,10 +36,12 @@ def client(monkeypatch, ui_dir):
         yield c
 
 
-def _setup_stitch_inputs(ui_dir):
+def _setup_stitch_inputs(ui_dir, config="c-0000000"):
     """Create all prerequisite files for stitching."""
     (ui_dir / "raw_video" / "Test Title.mp4").write_bytes(b"fake-video")
-    (ui_dir / "translated_audio" / "Test Title.wav").write_bytes(b"fake-audio")
+    audio_dir = ui_dir / "translated_audio" / config
+    audio_dir.mkdir(parents=True, exist_ok=True)
+    (audio_dir / "Test Title.wav").write_bytes(b"fake-audio")
     trans = {
         "text": "Hola mundo",
         "language": "es",
@@ -49,48 +52,55 @@ def _setup_stitch_inputs(ui_dir):
     )
 
 
+def _title_resolver(*args, **kwargs):
+    return "Test Title"
+
+
 def test_stitch_returns_video_path(client, monkeypatch, ui_dir):
-    """POST /api/stitch/{video_id} returns path to generated MP4."""
+    """POST /api/stitch/{video_id}?config=... returns path to generated MP4."""
     _setup_stitch_inputs(ui_dir)
 
     monkeypatch.setattr(
-        "api.src.services.stitch_service.StitchService.title_for_video_id",
-        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
+        "api.src.routers.stitch.resolve_title",
+        _title_resolver,
     )
 
-    def fake_stitch(video_path, caption_path, audio_path, output_path):
+    def fake_stitch(video_path, audio_path, output_path):
         pathlib.Path(output_path).write_bytes(b"fake-mp4")
 
-    monkeypatch.setattr(
-        "api.src.services.stitch_service.stitch_video_with_timestamps", fake_stitch
-    )
+    import api.src.routers.stitch as stitch_mod
 
-    resp = client.post("/api/stitch/G3Eup4mfJdA")
+    monkeypatch.setattr(stitch_mod._stitch_service, "stitch_audio_only", fake_stitch)
+
+    resp = client.post("/api/stitch/G3Eup4mfJdA?config=c-0000000")
     assert resp.status_code == 200
     body = resp.json()
     assert body["video_id"] == "G3Eup4mfJdA"
     assert body["video_path"].endswith(".mp4")
+    assert body["config"] == "c-0000000"
 
 
 def test_stitch_skips_if_cached(client, monkeypatch, ui_dir):
-    """Skip stitching if output MP4 already exists."""
+    """Skip stitching if output MP4 already exists in config subdirectory."""
     monkeypatch.setattr(
-        "api.src.services.stitch_service.StitchService.title_for_video_id",
-        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
+        "api.src.routers.stitch.resolve_title",
+        _title_resolver,
     )
 
-    (ui_dir / "translated_video" / "Test Title.mp4").write_bytes(b"fake-mp4")
+    config_dir = ui_dir / "translated_video" / "c-0000000"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "Test Title.mp4").write_bytes(b"fake-mp4")
 
     stitch_called = {"count": 0}
 
-    def tracking_stitch(*args):
+    def tracking_stitch(video_path, audio_path, output_path):
         stitch_called["count"] += 1
 
-    monkeypatch.setattr(
-        "api.src.services.stitch_service.stitch_video_with_timestamps", tracking_stitch
-    )
+    import api.src.routers.stitch as stitch_mod
 
-    resp = client.post("/api/stitch/G3Eup4mfJdA")
+    monkeypatch.setattr(stitch_mod._stitch_service, "stitch_audio_only", tracking_stitch)
+
+    resp = client.post("/api/stitch/G3Eup4mfJdA?config=c-0000000")
     assert resp.status_code == 200
     assert stitch_called["count"] == 0
 
@@ -98,35 +108,51 @@ def test_stitch_skips_if_cached(client, monkeypatch, ui_dir):
 def test_stitch_missing_inputs_returns_404(client, monkeypatch, ui_dir):
     """Returns 404 when prerequisite files don't exist."""
     monkeypatch.setattr(
-        "api.src.services.stitch_service.StitchService.title_for_video_id",
-        lambda self_or_vid, vid_or_dir, search_dir=None: None,
+        "api.src.routers.stitch.resolve_title",
+        lambda *a, **kw: None,
     )
 
-    resp = client.post("/api/stitch/NONEXISTENT")
+    resp = client.post("/api/stitch/NONEXISTENT?config=c-0000000")
     assert resp.status_code == 404
 
 
 def test_get_video_streams_mp4(client, monkeypatch, ui_dir):
-    """GET /api/video/{video_id} streams the MP4 with correct content type."""
+    """GET /api/video/{video_id}?config=... streams the MP4."""
     monkeypatch.setattr(
-        "api.src.services.stitch_service.StitchService.title_for_video_id",
-        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
+        "api.src.routers.stitch.resolve_title",
+        _title_resolver,
     )
 
-    (ui_dir / "translated_video" / "Test Title.mp4").write_bytes(b"fake-mp4-content")
+    config_dir = ui_dir / "translated_video" / "c-0000000"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "Test Title.mp4").write_bytes(b"fake-mp4-content")
 
-    resp = client.get("/api/video/G3Eup4mfJdA")
+    resp = client.get("/api/video/G3Eup4mfJdA?config=c-0000000")
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "video/mp4"
     assert resp.content == b"fake-mp4-content"
 
 
+def test_get_video_falls_back_to_legacy_dir(client, monkeypatch, ui_dir):
+    """GET /api/video/{video_id}?config=... falls back to flat dir."""
+    monkeypatch.setattr(
+        "api.src.routers.stitch.resolve_title",
+        _title_resolver,
+    )
+
+    (ui_dir / "translated_video" / "Test Title.mp4").write_bytes(b"legacy-mp4")
+
+    resp = client.get("/api/video/G3Eup4mfJdA?config=c-0000000")
+    assert resp.status_code == 200
+    assert resp.content == b"legacy-mp4"
+
+
 def test_get_video_not_found(client, monkeypatch, ui_dir):
     """GET /api/video/{video_id} returns 404 if video doesn't exist."""
     monkeypatch.setattr(
-        "api.src.services.stitch_service.StitchService.title_for_video_id",
-        lambda self_or_vid, vid_or_dir, search_dir=None: None,
+        "api.src.routers.stitch.resolve_title",
+        lambda *a, **kw: None,
     )
 
-    resp = client.get("/api/video/NONEXISTENT")
+    resp = client.get("/api/video/NONEXISTENT?config=c-0000000")
     assert resp.status_code == 404
