@@ -1,3 +1,4 @@
+import asyncio
 import os
 import pathlib
 import json
@@ -281,7 +282,6 @@ def _shorten_segment_text(en_text: str, es_text: str, target_sec: float) -> str:
     - pydantic-ai is not installed
     - the agent call fails for any reason
     """
-    import os
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return es_text
 
@@ -289,18 +289,27 @@ def _shorten_segment_text(en_text: str, es_text: str, target_sec: float) -> str:
         from foreign_whispers.agents import get_shorter_translations, PYDANTICAI_AVAILABLE
         if not PYDANTICAI_AVAILABLE:
             return es_text
-        import asyncio
-        candidates = asyncio.run(
-            get_shorter_translations(
-                source_text=en_text,
-                baseline_es=es_text,
-                target_duration_s=target_sec,
+
+        # asyncio.run() raises RuntimeError if called from inside a running event loop
+        # (e.g. FastAPI run_in_executor thread).  Create a fresh event loop in the
+        # current worker thread instead — always safe from a thread pool worker.
+        loop = asyncio.new_event_loop()
+        try:
+            candidates = loop.run_until_complete(
+                get_shorter_translations(
+                    source_text=en_text,
+                    baseline_es=es_text,
+                    target_duration_s=target_sec,
+                )
             )
-        )
+        finally:
+            loop.close()
+
         if candidates:
             return candidates[0].text
     except Exception as exc:
-        print(f"[tts_es] rerank failed ({exc}), keeping original text")
+        import logging as _logging
+        _logging.getLogger(__name__).warning("[tts_es] rerank failed: %s", exc)
     return es_text
 
 
@@ -435,7 +444,7 @@ def text_file_to_speech(source_path, output_path, tts_engine=None):
 
             segment_details.append({
                 "index": i,
-                "text": seg["text"],
+                "text": seg_text,
                 "target_sec": round(target_sec, 3),
                 "stretch_factor": round(stretch_factor, 3),
                 "raw_duration_s": round(seg_raw_duration, 3),

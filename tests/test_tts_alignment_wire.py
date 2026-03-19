@@ -159,12 +159,10 @@ def test_shorten_segment_text_fallback_without_key():
 def test_text_file_to_speech_calls_shorten_for_request_shorter(tmp_path):
     """text_file_to_speech calls _shorten_segment_text for REQUEST_SHORTER segments."""
     from tts_es import text_file_to_speech
-    from foreign_whispers.alignment import AlignAction, AlignedSegment
+    from foreign_whispers.alignment import AlignAction
     import json
 
-    # Craft a segment that will trigger REQUEST_SHORTER:
-    # src_dur=3.0s, ~27 "ba" syllables in ES text → stretch ≈ 2.0 → REQUEST_SHORTER
-    es_seg = {"start": 0.0, "end": 3.0, "text": "ba" * 27}
+    es_seg = {"start": 0.0, "end": 3.0, "text": "Esta es una oración muy larga que no cabe."}
     en_seg = {"start": 0.0, "end": 3.0, "text": "Hello world"}
 
     es_dir = tmp_path / "translated_transcription"
@@ -182,16 +180,41 @@ def test_text_file_to_speech_calls_shorten_for_request_shorter(tmp_path):
 
     def fake_shorten(en_text, es_text, target_sec):
         shorten_calls.append((en_text, es_text, target_sec))
-        return es_text  # return unchanged
+        return es_text
 
     def fake_synced(engine, text, target_sec, work_dir, stretch_factor=1.0):
         from pydub import AudioSegment
         return AudioSegment.silent(duration=int(target_sec * 1000)), 1.0, target_sec
 
+    # Inject REQUEST_SHORTER action directly — don't depend on heuristic thresholds
+    mock_aligned_seg = MagicMock()
+    mock_aligned_seg.stretch_factor = 1.0
+    mock_aligned_seg.action = AlignAction.REQUEST_SHORTER
+
     engine = MagicMock()
     with patch("tts_es._shorten_segment_text", side_effect=fake_shorten), \
-         patch("tts_es._synced_segment_audio", side_effect=fake_synced):
+         patch("tts_es._synced_segment_audio", side_effect=fake_synced), \
+         patch("tts_es._build_alignment", return_value=([], {0: mock_aligned_seg})):
         text_file_to_speech(str(es_dir / f"{title}.json"), str(out_dir), tts_engine=engine)
 
     assert len(shorten_calls) == 1, "Expected _shorten_segment_text to be called once"
     assert shorten_calls[0][1] == es_seg["text"]
+
+
+def test_shorten_segment_text_fallback_no_pydanticai(monkeypatch):
+    """_shorten_segment_text returns original text when pydantic-ai is not installed."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    with patch("foreign_whispers.agents.PYDANTICAI_AVAILABLE", False):
+        from tts_es import _shorten_segment_text
+        result = _shorten_segment_text("source", "target", 2.0)
+        assert result == "target"
+
+
+def test_shorten_segment_text_fallback_on_agent_exception(monkeypatch):
+    """_shorten_segment_text returns original text when the agent raises."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    with patch("foreign_whispers.agents.PYDANTICAI_AVAILABLE", True), \
+         patch("foreign_whispers.agents.get_shorter_translations", side_effect=RuntimeError("boom")):
+        from tts_es import _shorten_segment_text
+        result = _shorten_segment_text("source", "target", 2.0)
+        assert result == "target"
