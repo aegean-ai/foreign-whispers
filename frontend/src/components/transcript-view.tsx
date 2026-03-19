@@ -10,7 +10,7 @@ interface TranscriptViewProps {
 
 export function TranscriptView({ segments }: TranscriptViewProps) {
   return (
-    <ScrollArea className="h-[500px]">
+    <ScrollArea className="max-h-[300px]">
       <div className="flex flex-col gap-2 pr-4">
         {segments.map((seg, i) => (
           <div key={i} className="flex gap-3">

@@ -23,7 +23,7 @@ export function TranslationView({
       </TabsList>
 
       <TabsContent value="side-by-side">
-        <ScrollArea className="h-[500px]">
+        <ScrollArea className="max-h-[300px]">
           <div className="flex flex-col gap-3 pr-4">
             {englishSegments.map((en, i) => {
               const es = spanishSegments[i];
@@ -42,7 +42,7 @@ export function TranslationView({
       </TabsContent>
 
       <TabsContent value="english">
-        <ScrollArea className="h-[500px]">
+        <ScrollArea className="max-h-[300px]">
           <div className="flex flex-col gap-2 pr-4">
             {englishSegments.map((seg, i) => (
               <div key={i} className="flex gap-3">
@@ -57,7 +57,7 @@ export function TranslationView({
       </TabsContent>
 
       <TabsContent value="spanish">
-        <ScrollArea className="h-[500px]">
+        <ScrollArea className="max-h-[300px]">
           <div className="flex flex-col gap-2 pr-4">
             {spanishSegments.map((seg, i) => (
               <div key={i} className="flex gap-3">
