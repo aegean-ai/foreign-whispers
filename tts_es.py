@@ -1,4 +1,5 @@
 import os
+import os as _os
 import pathlib
 import json
 import glob
@@ -14,6 +15,15 @@ from pydub import AudioSegment
 XTTS_API_URL = os.getenv("XTTS_API_URL", "http://localhost:8020")
 XTTS_SPEAKER = os.getenv("XTTS_SPEAKER", "default.wav")
 XTTS_LANGUAGE = os.getenv("XTTS_LANGUAGE", "es")
+
+# Set FW_ALIGNMENT=off to use the pre-alignment baseline (legacy unclamped stretch).
+# Default is "on" (new clamped path). Useful for A/B comparisons.
+_ALIGNMENT_ENABLED = _os.getenv("FW_ALIGNMENT", "on").lower() != "off"
+
+SPEED_MIN = 0.85
+SPEED_MAX = 1.25
+_SPEED_MIN_LEGACY = 0.1
+_SPEED_MAX_LEGACY = 10.0
 
 
 class XTTSClient:
@@ -159,7 +169,7 @@ def files_from_dir(dir_path) -> list:
     return es_files
 
 
-def _synced_segment_audio(tts_engine, text: str, target_sec: float, work_dir) -> AudioSegment | None:
+def _synced_segment_audio(tts_engine, text: str, target_sec: float, work_dir, stretch_factor: float = 1.0) -> AudioSegment | None:
     """Generate TTS audio for *text* and time-stretch it to *target_sec*.
 
     Returns an AudioSegment whose duration is within ~50 ms of target_sec.
@@ -193,9 +203,14 @@ def _synced_segment_audio(tts_engine, text: str, target_sec: float, work_dir) ->
     if raw_duration == 0:
         return AudioSegment.silent(duration=target_ms)
 
-    # Compute speed factor and clamp to [0.1, 10]
-    speed_factor = raw_duration / target_sec
-    speed_factor = max(0.1, min(10.0, speed_factor))
+    # Compute speed factor — baseline (legacy) path uses wide clamp
+    if not _ALIGNMENT_ENABLED:
+        speed_factor = raw_duration / target_sec
+        speed_factor = max(_SPEED_MIN_LEGACY, min(_SPEED_MAX_LEGACY, speed_factor))
+    else:
+        effective_target = target_sec * max(stretch_factor, 0.1)
+        speed_factor = raw_duration / effective_target
+        speed_factor = max(SPEED_MIN, min(SPEED_MAX, speed_factor))
 
     # Time-stretch using rubberband
     y_stretched = pyrubberband.time_stretch(y, sr, speed_factor)
@@ -217,6 +232,63 @@ def _synced_segment_audio(tts_engine, text: str, target_sec: float, work_dir) ->
 
 def text_to_speech(text, output_file_path):
     _get_tts_engine().tts_to_file(text=text, file_path=str(output_file_path))
+
+
+def _load_en_transcript(es_source_path: str) -> dict:
+    """Locate the English transcript that corresponds to the ES source file.
+
+    Convention: ES JSON lives at .../translated_transcription/<title>.json
+    English JSON lives at .../raw_transcription/<title>.json
+    Returns an empty dict (no segments) if the EN file is not found.
+    """
+    es_path = pathlib.Path(es_source_path)
+    en_path = es_path.parent.parent / "raw_transcription" / es_path.name
+    if not en_path.exists():
+        print(f"[tts_es] EN transcript not found at {en_path}, alignment skipped")
+        return {}
+    with open(en_path) as f:
+        return json.load(f)
+
+
+def _build_alignment(en_transcript: dict, es_transcript: dict) -> dict:
+    """Run global_align and return a {segment_index: AlignedSegment} map.
+
+    Returns an empty dict if the alignment library is unavailable or fails.
+    """
+    try:
+        from foreign_whispers.alignment import compute_segment_metrics, global_align
+    except ImportError:
+        return {}
+    try:
+        metrics = compute_segment_metrics(en_transcript, es_transcript)
+        aligned = global_align(metrics, silence_regions=[])
+        return {seg.index: seg for seg in aligned}
+    except Exception as exc:
+        print(f"[tts_es] alignment failed ({exc}), proceeding without alignment")
+        return {}
+
+
+def _write_align_report(
+    output_path: str,
+    stem: str,
+    metrics: list,
+    aligned: list,
+    segment_details: list,
+) -> None:
+    """Write a {stem}.align.json sidecar with evaluation metrics and per-segment detail.
+
+    segment_details is a list of dicts: [{raw_duration_s, speed_factor, action, text}, ...]
+    Written next to the WAV so both baseline and aligned runs produce comparable files.
+    """
+    try:
+        from foreign_whispers.evaluation import clip_evaluation_report
+        summary = clip_evaluation_report(metrics, aligned)
+    except Exception:
+        summary = {}
+
+    report = {**summary, "alignment_enabled": _ALIGNMENT_ENABLED, "segments": segment_details}
+    sidecar_path = pathlib.Path(output_path) / f"{stem}.align.json"
+    sidecar_path.write_text(json.dumps(report, indent=2))
 
 
 def _compute_speech_offset(source_path: str) -> float:
@@ -276,11 +348,26 @@ def text_file_to_speech(source_path, output_path, tts_engine=None):
     if offset > 0:
         print(f" (applying {offset:.1f}s speech offset)", end="")
 
+    # Pre-compute alignment (returns {index: AlignedSegment})
+    with open(source_path) as f:
+        es_transcript = json.load(f)
+    en_transcript = _load_en_transcript(source_path)
+    align_map = _build_alignment(en_transcript, es_transcript)
+
+    # Also keep flat lists for clip_evaluation_report
+    try:
+        from foreign_whispers.alignment import compute_segment_metrics, global_align
+        _metrics_list = compute_segment_metrics(en_transcript, es_transcript) if en_transcript else []
+        _aligned_list = list(align_map.values())
+    except Exception:
+        _metrics_list, _aligned_list = [], []
+
     with tempfile.TemporaryDirectory() as tmpdir:
         combined = AudioSegment.empty()
         cursor_ms = 0
+        segment_details = []
 
-        for seg in segments:
+        for i, seg in enumerate(segments):
             start_ms = int((seg["start"] + offset) * 1000)
             end_ms = int((seg["end"] + offset) * 1000)
             target_sec = seg["end"] - seg["start"]
@@ -289,13 +376,34 @@ def text_file_to_speech(source_path, output_path, tts_engine=None):
                 combined += AudioSegment.silent(duration=start_ms - cursor_ms)
                 cursor_ms = start_ms
 
-            seg_audio = _synced_segment_audio(engine, seg["text"], target_sec, tmpdir)
+            aligned_seg = align_map.get(i)
+            stretch_factor = aligned_seg.stretch_factor if aligned_seg else 1.0
+
+            seg_audio = _synced_segment_audio(
+                engine, seg["text"], target_sec, tmpdir,
+                stretch_factor=stretch_factor,
+            )
+
+            raw_duration_s = round(len(seg_audio) / 1000.0, 3) if seg_audio is not None else 0.0
+            segment_details.append({
+                "index": i,
+                "text": seg["text"],
+                "target_sec": round(target_sec, 3),
+                "stretch_factor": round(stretch_factor, 3),
+                "raw_duration_s": raw_duration_s,
+                "speed_factor": round(stretch_factor, 3),
+                "action": aligned_seg.action.value if aligned_seg and hasattr(aligned_seg, "action") else "unknown",
+            })
+
             if seg_audio is not None:
                 combined += seg_audio
                 cursor_ms += len(seg_audio)
 
         save_path = pathlib.Path(output_path) / save_name
         combined.export(str(save_path), format="wav")
+
+    stem = pathlib.Path(source_path).stem
+    _write_align_report(str(output_path), stem, _metrics_list, _aligned_list, segment_details)
 
     print("success!")
     return None
