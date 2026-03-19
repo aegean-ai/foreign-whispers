@@ -1,11 +1,22 @@
 "use client";
 
 import * as React from "react";
-import { FilmIcon, VideoIcon } from "lucide-react";
+import {
+  FilmIcon,
+  VideoIcon,
+  SettingsIcon,
+  PlayIcon,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Accordion } from "@/components/ui/accordion";
+import { DubbingMethodAccordion } from "./dubbing-method-accordion";
+import { DiarizationAccordion } from "./diarization-accordion";
+import { VoiceCloningAccordion } from "./voice-cloning-accordion";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -15,8 +26,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  SidebarSeparator,
 } from "@/components/ui/sidebar";
-import type { Video, PipelineState, VideoVariant } from "@/lib/types";
+import type { Video, PipelineState, StudioSettings, VideoVariant } from "@/lib/types";
 
 function getVideoStatus(
   video: Video,
@@ -40,6 +52,9 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   selectedVideoId: string | null;
   onSelectVideo: (videoId: string) => void;
   pipelineState: PipelineState;
+  settings: StudioSettings;
+  onToggleSetting: (group: keyof StudioSettings, value: string) => void;
+  onStartPipeline: () => void;
 }
 
 export function AppSidebar({
@@ -47,6 +62,9 @@ export function AppSidebar({
   selectedVideoId,
   onSelectVideo,
   pipelineState,
+  settings,
+  onToggleSetting,
+  onStartPipeline,
   ...props
 }: AppSidebarProps) {
   return (
@@ -66,7 +84,9 @@ export function AppSidebar({
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
+
       <SidebarContent>
+        {/* Video Library */}
         <SidebarGroup>
           <SidebarGroupLabel>Video Library</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -96,7 +116,45 @@ export function AppSidebar({
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        <SidebarSeparator />
+
+        {/* Pipeline Controls */}
+        <SidebarGroup>
+          <SidebarGroupLabel>
+            <SettingsIcon className="size-3.5 mr-1.5" />
+            Pipeline Settings
+          </SidebarGroupLabel>
+          <SidebarGroupContent className="px-2">
+            <Accordion multiple defaultValue={["dubbing-method"]}>
+              <DubbingMethodAccordion
+                selected={settings.dubbing}
+                onToggle={(v) => onToggleSetting("dubbing", v)}
+              />
+              <DiarizationAccordion
+                selected={settings.diarization}
+                onToggle={(v) => onToggleSetting("diarization", v)}
+              />
+              <VoiceCloningAccordion
+                selected={settings.voiceCloning}
+                onToggle={(v) => onToggleSetting("voiceCloning", v)}
+              />
+            </Accordion>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
+
+      <SidebarFooter>
+        <Button
+          className="w-full"
+          onClick={onStartPipeline}
+          disabled={pipelineState.status === "running"}
+        >
+          <PlayIcon className="size-3.5 mr-1.5" />
+          {pipelineState.status === "running" ? "Processing..." : "Start Pipeline"}
+        </Button>
+      </SidebarFooter>
+
       <SidebarRail />
     </Sidebar>
   );

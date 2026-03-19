@@ -4,26 +4,11 @@ import type { Video } from "@/lib/types";
 import { usePipeline } from "@/hooks/use-pipeline";
 import { useStudioSettings } from "@/hooks/use-studio-settings";
 import { AppSidebar } from "./app-sidebar";
+import { PipelineCards } from "./pipeline-cards";
+import { PipelineTable } from "./pipeline-table";
 import { VideoCanvas } from "./video-canvas";
-import { ControlPanel } from "./control-panel";
-import { Button } from "@/components/ui/button";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
-import {
-  SidebarProvider,
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarInset,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 
 interface StudioLayoutProps {
   videos: Video[];
@@ -45,76 +30,61 @@ export function StudioLayout({ videos }: StudioLayoutProps) {
   };
 
   return (
-    <SidebarProvider>
-      {/* Left Sidebar — Video Library */}
+    <SidebarProvider
+      style={
+        {
+          "--sidebar-width": "calc(var(--spacing) * 72)",
+          "--header-height": "calc(var(--spacing) * 12)",
+        } as React.CSSProperties
+      }
+    >
       <AppSidebar
+        variant="inset"
         videos={videos}
         selectedVideoId={selectedVideoId}
         onSelectVideo={handleSelectVideo}
         pipelineState={state}
+        settings={settings}
+        onToggleSetting={toggleSetting}
+        onStartPipeline={handleStartPipeline}
       />
-
-      {/* Center — Main Content */}
       <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator
-            orientation="vertical"
-            className="mr-2 data-vertical:h-4 data-vertical:self-auto"
-          />
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbPage className="font-serif text-lg">
-                  Foreign Whispers
-                </BreadcrumbPage>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator className="hidden md:block" />
-              <BreadcrumbItem>
-                <BreadcrumbPage>
-                  {selectedVideo?.title ?? "Select a video"}
-                </BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
+        {/* Site header */}
+        <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
+          <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
+            <SidebarTrigger className="-ml-1" />
+            <Separator
+              orientation="vertical"
+              className="mx-2 h-4 data-vertical:self-auto"
+            />
+            <h1 className="text-base font-medium">
+              {selectedVideo?.title ?? "Select a video"}
+            </h1>
+          </div>
         </header>
 
-        <div className="flex flex-1 overflow-hidden">
-          {/* Video canvas */}
-          <div className="flex-1 overflow-hidden">
-            <VideoCanvas
-              pipelineState={state}
-              activeVariantId={state.activeVariantId}
-              onSelectVariant={selectVariant}
-            />
+        {/* Main content — dashboard-01 pattern */}
+        <div className="flex flex-1 flex-col">
+          <div className="@container/main flex flex-1 flex-col gap-2">
+            <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+              {/* Pipeline stage cards */}
+              <PipelineCards pipelineState={state} />
+
+              {/* Video player (replaces chart) */}
+              <div className="px-4 lg:px-6">
+                <VideoCanvas
+                  pipelineState={state}
+                  activeVariantId={state.activeVariantId}
+                  onSelectVariant={selectVariant}
+                />
+              </div>
+
+              {/* Pipeline stages table (replaces data table) */}
+              <PipelineTable pipelineState={state} settings={settings} />
+            </div>
           </div>
         </div>
       </SidebarInset>
-
-      {/* Right Sidebar — Controls */}
-      <Sidebar side="right" variant="sidebar" collapsible="none">
-        <SidebarHeader className="border-b border-sidebar-border px-3 py-3">
-          <span className="text-xs font-medium uppercase tracking-wider text-sidebar-foreground/60">
-            Controls
-          </span>
-        </SidebarHeader>
-        <SidebarContent>
-          <ControlPanel
-            settings={settings}
-            onToggleSetting={toggleSetting}
-            pipelineState={state}
-          />
-        </SidebarContent>
-        <SidebarFooter>
-          <Button
-            className="w-full"
-            onClick={handleStartPipeline}
-            disabled={state.status === "running"}
-          >
-            {state.status === "running" ? "Processing..." : "Start Pipeline"}
-          </Button>
-        </SidebarFooter>
-      </Sidebar>
     </SidebarProvider>
   );
 }
