@@ -5,6 +5,7 @@ import { usePipeline } from "@/hooks/use-pipeline";
 import { useStudioSettings } from "@/hooks/use-studio-settings";
 import { AppSidebar } from "./app-sidebar";
 import { PipelineCards } from "./pipeline-cards";
+import { PipelineStatusBar } from "./pipeline-status-bar";
 import { PipelineTable } from "./pipeline-table";
 import { VideoCanvas } from "./video-canvas";
 import { Separator } from "@/components/ui/separator";
@@ -84,6 +85,9 @@ export function StudioLayout({ videos }: StudioLayoutProps) {
             </div>
           </div>
         </div>
+
+        {/* Live status bar at bottom */}
+        <PipelineStatusBar pipelineState={state} />
       </SidebarInset>
     </SidebarProvider>
   );

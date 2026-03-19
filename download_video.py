@@ -46,10 +46,12 @@ def get_video_info(url):
         info = ydl.extract_info(url, download=False, process=False)
     return info["id"], info["title"]
 
-def download_video(url, destination_folder):
-    """downloads YouTube Video (mp4) from URL, skipping if file already exists"""
+def download_video(url, destination_folder, filename=None):
+    """downloads YouTube Video (mp4) from URL, skipping if file already exists.
+    If *filename* is given it is used as the stem; otherwise the YouTube title
+    is used with colons and pipes stripped."""
     vid_id, title = get_video_info(url)
-    safe_title = title.replace(":", "")
+    safe_title = filename or re.sub(r'[:|]', '', title).strip()
     save_path = pathlib.Path(destination_folder) / (safe_title + ".mp4")
     if save_path.exists():
         print(f"Skipping (already exists): {title}")
@@ -65,10 +67,12 @@ def download_video(url, destination_folder):
     print("Success!")
     return str(save_path)
 
-def download_caption(url, destination_folder):
-    """download english captions to <video_title.txt> in destination_folder, skipping if file already exists"""
+def download_caption(url, destination_folder, filename=None):
+    """download english captions to <filename.txt> in destination_folder, skipping if file already exists.
+    If *filename* is given it is used as the stem; otherwise the YouTube title
+    is used with colons and pipes stripped."""
     video_id, title = get_video_info(url)
-    safe_title = title.replace(":", "")
+    safe_title = filename or re.sub(r'[:|]', '', title).strip()
     save_path = pathlib.Path(destination_folder) / (safe_title + ".txt")
     if save_path.exists():
         print(f"Skipping captions (already exists): {title}")

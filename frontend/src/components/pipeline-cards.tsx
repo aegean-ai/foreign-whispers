@@ -15,12 +15,13 @@ import {
   ActivityIcon,
   FilmIcon,
 } from "lucide-react";
+import { useElapsed } from "@/hooks/use-elapsed";
 import type {
   PipelineState,
+  PipelineStage,
   TranscribeResponse,
   TranslateResponse,
   DownloadResponse,
-  CaptionSegment,
 } from "@/lib/types";
 
 function formatTime(seconds: number): string {
@@ -29,14 +30,25 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function totalPipelineTime(state: PipelineState): string {
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function getActiveStageStartedAt(state: PipelineState): number | undefined {
+  const stages: PipelineStage[] = ["download", "transcribe", "translate", "tts", "stitch"];
+  for (const key of stages) {
+    if (state.stages[key].status === "active") return state.stages[key].started_at;
+  }
+  return undefined;
+}
+
+function completedStagesTime(state: PipelineState): number {
   let total = 0;
   for (const stage of Object.values(state.stages)) {
     if (stage.duration_ms) total += stage.duration_ms;
   }
-  if (total === 0) return "--";
-  if (total < 1000) return `${total}ms`;
-  return `${(total / 1000).toFixed(1)}s`;
+  return total;
 }
 
 function pipelineStatusBadge(status: PipelineState["status"]) {
@@ -57,6 +69,11 @@ interface PipelineCardsProps {
 }
 
 export function PipelineCards({ pipelineState }: PipelineCardsProps) {
+  const activeElapsed = useElapsed(getActiveStageStartedAt(pipelineState));
+  const completedTime = completedStagesTime(pipelineState);
+  const totalTime = completedTime + (activeElapsed ?? 0);
+  const pipelineTimeStr = totalTime > 0 ? formatDuration(totalTime) : "--";
+
   const downloadResult = pipelineState.stages.download.result as DownloadResponse | undefined;
   const transcribeResult = pipelineState.stages.transcribe.result as TranscribeResponse | undefined;
   const translateResult = pipelineState.stages.translate.result as TranslateResponse | undefined;
@@ -90,7 +107,7 @@ export function PipelineCards({ pipelineState }: PipelineCardsProps) {
   }[] = [
     {
       label: "Pipeline",
-      value: totalPipelineTime(pipelineState),
+      value: pipelineTimeStr,
       icon: ClockIcon,
       badge: pipelineStatusBadge(pipelineState.status),
     },

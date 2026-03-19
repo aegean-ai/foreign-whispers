@@ -17,12 +17,12 @@ def get_video_info(url: str):
     return _get_download_module().get_video_info(url)
 
 
-def dv_download_video(url: str, destination: str):
-    return _get_download_module().download_video(url, destination)
+def dv_download_video(url: str, destination: str, filename: str | None = None):
+    return _get_download_module().download_video(url, destination, filename)
 
 
-def dv_download_caption(url: str, destination: str):
-    return _get_download_module().download_caption(url, destination)
+def dv_download_caption(url: str, destination: str, filename: str | None = None):
+    return _get_download_module().download_caption(url, destination, filename)
 
 
 class DownloadService:
@@ -42,13 +42,13 @@ class DownloadService:
         """Return (video_id, title) for a YouTube URL."""
         return get_video_info(url)
 
-    def download_video(self, url: str, destination: str) -> str:
+    def download_video(self, url: str, destination: str, filename: str | None = None) -> str:
         """Download an MP4 and return the saved path."""
-        return dv_download_video(url, destination)
+        return dv_download_video(url, destination, filename)
 
-    def download_caption(self, url: str, destination: str) -> str:
+    def download_caption(self, url: str, destination: str, filename: str | None = None) -> str:
         """Download captions and return the saved path."""
-        return dv_download_caption(url, destination)
+        return dv_download_caption(url, destination, filename)
 
     # ------------------------------------------------------------------
     # Helpers (moved from router)

@@ -34,10 +34,10 @@ async def download_endpoint(body: DownloadRequest):
 
     # Skip re-download if both files exist
     if not video_path.exists():
-        _download_service.download_video(body.url, str(raw_video_dir))
+        _download_service.download_video(body.url, str(raw_video_dir), filename)
 
     if not caption_path.exists():
-        _download_service.download_caption(body.url, str(raw_caption_dir))
+        _download_service.download_caption(body.url, str(raw_caption_dir), filename)
 
     segments = _download_service.read_caption_segments(caption_path)
 

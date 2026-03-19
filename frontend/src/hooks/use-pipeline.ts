@@ -99,7 +99,7 @@ function reducer(state: PipelineState, action: Action): PipelineState {
         ...state,
         stages: {
           ...state.stages,
-          [action.stage]: { status: "active" },
+          [action.stage]: { status: "active", started_at: Date.now() },
         },
         selectedStage: action.stage,
       };

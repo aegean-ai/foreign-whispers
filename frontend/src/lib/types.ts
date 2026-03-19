@@ -56,6 +56,7 @@ export interface StageState {
   result?: unknown;
   error?: string;
   duration_ms?: number;
+  started_at?: number;
 }
 
 export interface PipelineState {

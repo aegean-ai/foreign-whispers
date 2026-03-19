@@ -16,7 +16,8 @@ import {
   Volume2Icon,
   ScissorsIcon,
 } from "lucide-react";
-import type { PipelineStage, PipelineState, StudioSettings } from "@/lib/types";
+import { useElapsed } from "@/hooks/use-elapsed";
+import type { PipelineStage, PipelineState, StageState, StudioSettings } from "@/lib/types";
 
 const STAGES: {
   key: PipelineStage;
@@ -42,6 +43,47 @@ function statusBadge(status: string) {
     default:
       return <Badge variant="outline">Pending</Badge>;
   }
+}
+
+function formatDuration(ms: number | undefined): string {
+  if (ms == null) return "--";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/** Individual row — needs its own component so it can call useElapsed. */
+function StageRow({
+  stageKey,
+  label,
+  icon: Icon,
+  description,
+  stage,
+  config,
+}: {
+  stageKey: string;
+  label: string;
+  icon: React.ElementType;
+  description: string;
+  stage: StageState;
+  config: string;
+}) {
+  const elapsed = useElapsed(stage.status === "active" ? stage.started_at : undefined);
+  const duration = stage.status === "active" ? elapsed : stage.duration_ms;
+
+  return (
+    <TableRow key={stageKey}>
+      <TableCell className="font-medium">
+        <div className="flex items-center gap-2">
+          <Icon className="size-4 text-muted-foreground" />
+          {label}
+        </div>
+      </TableCell>
+      <TableCell className="text-muted-foreground">{description}</TableCell>
+      <TableCell>{statusBadge(stage.status)}</TableCell>
+      <TableCell className="text-right tabular-nums">{formatDuration(duration)}</TableCell>
+      <TableCell className="text-muted-foreground text-xs">{config}</TableCell>
+    </TableRow>
+  );
 }
 
 interface PipelineTableProps {
@@ -86,31 +128,17 @@ export function PipelineTable({ pipelineState, settings }: PipelineTableProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {STAGES.map(({ key, label, icon: Icon, description }) => {
-            const stage = pipelineState.stages[key];
-            const duration = stage.duration_ms
-              ? stage.duration_ms < 1000
-                ? `${stage.duration_ms}ms`
-                : `${(stage.duration_ms / 1000).toFixed(1)}s`
-              : "--";
-
-            return (
-              <TableRow key={key}>
-                <TableCell className="font-medium">
-                  <div className="flex items-center gap-2">
-                    <Icon className="size-4 text-muted-foreground" />
-                    {label}
-                  </div>
-                </TableCell>
-                <TableCell className="text-muted-foreground">{description}</TableCell>
-                <TableCell>{statusBadge(stage.status)}</TableCell>
-                <TableCell className="text-right tabular-nums">{duration}</TableCell>
-                <TableCell className="text-muted-foreground text-xs">
-                  {getConfig(key)}
-                </TableCell>
-              </TableRow>
-            );
-          })}
+          {STAGES.map(({ key, label, icon, description }) => (
+            <StageRow
+              key={key}
+              stageKey={key}
+              label={label}
+              icon={icon}
+              description={description}
+              stage={pipelineState.stages[key]}
+              config={getConfig(key)}
+            />
+          ))}
         </TableBody>
       </Table>
     </div>
