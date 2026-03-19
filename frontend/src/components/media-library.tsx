@@ -1,8 +1,14 @@
 "use client";
 
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+} from "@/components/ui/sidebar";
 import type { Video, PipelineState, VideoVariant } from "@/lib/types";
 
 interface MediaLibraryProps {
@@ -36,15 +42,9 @@ export function MediaLibrary({
   pipelineState,
 }: MediaLibraryProps) {
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-border/40 px-3 py-3">
-        <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Video Library
-        </span>
-      </div>
-
-      <ScrollArea className="flex-1">
-        <div className="flex flex-col gap-2 p-2">
+    <SidebarGroup>
+      <SidebarGroupContent>
+        <SidebarMenu>
           {videos.map((video) => {
             const isActive = video.id === selectedVideoId;
             const status = getVideoStatus(video, pipelineState, pipelineState.variants);
@@ -53,35 +53,40 @@ export function MediaLibrary({
             ).length;
 
             return (
-              <Card
-                key={video.id}
-                className={`cursor-pointer p-3 transition-colors hover:bg-accent/10 ${
-                  isActive ? "border-primary/50 bg-primary/5" : ""
-                }`}
-                onClick={() => onSelectVideo(video.id)}
-              >
-                {/* Thumbnail placeholder */}
-                <div className="mb-2 flex h-12 items-center justify-center rounded bg-muted">
-                  <span className="text-lg text-muted-foreground/40">&#9654;</span>
-                </div>
+              <SidebarMenuItem key={video.id}>
+                <SidebarMenuButton
+                  isActive={isActive}
+                  onClick={() => onSelectVideo(video.id)}
+                  className="h-auto py-2"
+                  tooltip={video.title}
+                >
+                  <div className="flex w-full flex-col gap-1.5">
+                    {/* Thumbnail placeholder */}
+                    <div className="flex h-10 items-center justify-center rounded bg-sidebar-accent/30">
+                      <span className="text-sm text-sidebar-foreground/30">&#9654;</span>
+                    </div>
 
-                <div className="truncate text-sm font-medium">{video.title}</div>
+                    <span className="truncate text-xs font-medium group-data-[collapsible=icon]:hidden">
+                      {video.title}
+                    </span>
 
-                <div className="mt-2 flex items-center gap-2">
-                  <Badge variant={status.variant} className="text-[10px]">
-                    {status.label}
-                  </Badge>
-                  {variantCount > 0 && (
-                    <Badge variant="outline" className="text-[10px]">
-                      {variantCount} variant{variantCount > 1 ? "s" : ""}
-                    </Badge>
-                  )}
-                </div>
-              </Card>
+                    <div className="flex items-center gap-1.5 group-data-[collapsible=icon]:hidden">
+                      <Badge variant={status.variant} className="text-[9px] px-1.5 py-0">
+                        {status.label}
+                      </Badge>
+                      {variantCount > 0 && (
+                        <Badge variant="outline" className="text-[9px] px-1.5 py-0">
+                          {variantCount}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             );
           })}
-        </div>
-      </ScrollArea>
-    </div>
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }
