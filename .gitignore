@@ -165,7 +165,7 @@ audios/
 captions/
 output_logs/
 data/transcriptions/
-/ui/
+pipeline_data/
 
 # Django runtime (removed, kept for safety)
 whispers/

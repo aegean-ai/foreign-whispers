@@ -141,4 +141,4 @@ Requirements:
 - Python 3.11
 - ffmpeg (system-wide)
 - deno (for yt-dlp YouTube extraction)
-- NVIDIA GPU recommended for Whisper + XTTS inference
+- GPU recommended for Whisper + XTTS inference
