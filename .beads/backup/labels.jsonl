@@ -21,6 +21,7 @@
 {"issue_id":"fw-6e1","label":"portability"}
 {"issue_id":"fw-901","label":"m5a"}
 {"issue_id":"fw-901","label":"task"}
+{"issue_id":"fw-a48","label":"api rename"}
 {"issue_id":"fw-b54","label":"restructure fastapi"}
 {"issue_id":"fw-b54.1","label":"restructure cleanup"}
 {"issue_id":"fw-b54.1","label":"restructure fastapi"}
@@ -46,6 +47,7 @@
 {"issue_id":"fw-b54.8","label":"restructure fastapi"}
 {"issue_id":"fw-b54.9","label":"restructure docker"}
 {"issue_id":"fw-b54.9","label":"restructure fastapi"}
+{"issue_id":"fw-b9s","label":"logfire observability"}
 {"issue_id":"fw-by5","label":"fastapi"}
 {"issue_id":"fw-by5","label":"m1"}
 {"issue_id":"fw-by5","label":"m6"}
