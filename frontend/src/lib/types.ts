@@ -64,3 +64,23 @@ export interface PipelineState {
   selectedStage: PipelineStage;
   videoId?: string;
 }
+
+export interface StudioSettings {
+  dubbing: string[];
+  diarization: string[];
+  voiceCloning: string[];
+}
+
+export interface VideoVariant {
+  id: string;
+  sourceVideoId: string;
+  label: string;
+  settings: StudioSettings;
+  status: "complete" | "processing" | "error";
+}
+
+export const DEFAULT_STUDIO_SETTINGS: StudioSettings = {
+  dubbing: ["baseline"],
+  diarization: [],
+  voiceCloning: [],
+};
