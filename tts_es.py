@@ -270,6 +270,40 @@ def _build_alignment(en_transcript: dict, es_transcript: dict) -> tuple:
         return [], {}
 
 
+def _shorten_segment_text(en_text: str, es_text: str, target_sec: float) -> str:
+    """Ask the PydanticAI agent for a shorter Spanish translation fitting target_sec.
+
+    Calls get_shorter_translations with:
+      source_text=en_text, baseline_es=es_text, target_duration_s=target_sec
+
+    Falls back to es_text if:
+    - ANTHROPIC_API_KEY is not set
+    - pydantic-ai is not installed
+    - the agent call fails for any reason
+    """
+    import os
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return es_text
+
+    try:
+        from foreign_whispers.agents import get_shorter_translations, PYDANTICAI_AVAILABLE
+        if not PYDANTICAI_AVAILABLE:
+            return es_text
+        import asyncio
+        candidates = asyncio.run(
+            get_shorter_translations(
+                source_text=en_text,
+                baseline_es=es_text,
+                target_duration_s=target_sec,
+            )
+        )
+        if candidates:
+            return candidates[0].text
+    except Exception as exc:
+        print(f"[tts_es] rerank failed ({exc}), keeping original text")
+    return es_text
+
+
 def _write_align_report(
     output_path: str,
     stem: str,
@@ -384,8 +418,18 @@ def text_file_to_speech(source_path, output_path, tts_engine=None):
             aligned_seg = align_map.get(i)
             stretch_factor = aligned_seg.stretch_factor if aligned_seg else 1.0
 
+            seg_text = seg["text"]
+            if aligned_seg is not None:
+                from foreign_whispers.alignment import AlignAction
+                if aligned_seg.action == AlignAction.REQUEST_SHORTER:
+                    en_text = ""
+                    en_segs = en_transcript.get("segments", [])
+                    if i < len(en_segs):
+                        en_text = en_segs[i].get("text", "")
+                    seg_text = _shorten_segment_text(en_text, seg["text"], target_sec)
+
             seg_audio, seg_speed_factor, seg_raw_duration = _synced_segment_audio(
-                engine, seg["text"], target_sec, tmpdir,
+                engine, seg_text, target_sec, tmpdir,
                 stretch_factor=stretch_factor,
             )
 

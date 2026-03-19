@@ -34,8 +34,9 @@ def test_report_no_issues_for_easy_segment():
 
 
 def test_report_counts_retries_for_hard_segment():
-    # 1s budget, 30 chars → 2.0s → stretch 2.0 → REQUEST_SHORTER
-    en, es = _make_transcripts(src_dur=1.0, tgt_chars=30)
+    # 1s budget, 9 syllables (ba*9) → ~2.0s predicted → REQUEST_SHORTER
+    en = {"segments": [{"start": 0.0, "end": 1.0, "text": "Hello world"}]}
+    es = {"segments": [{"start": 0.0, "end": 1.0, "text": "ba" * 9}]}
     metrics = compute_segment_metrics(en, es)
     aligned = global_align(metrics, silence_regions=[])
     report = clip_evaluation_report(metrics, aligned)

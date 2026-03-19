@@ -136,3 +136,62 @@ def test_text_file_to_speech_missing_en_transcript(tmp_path):
     assert called_with_stretch[0] == pytest.approx(1.0, abs=0.01)
     # WAV was written
     assert (out_dir / f"{title}.wav").exists()
+
+
+def test_shorten_segment_text_fallback_without_key():
+    """_shorten_segment_text returns original ES text when ANTHROPIC_API_KEY absent."""
+    from tts_es import _shorten_segment_text
+    import os
+
+    env_backup = os.environ.pop("ANTHROPIC_API_KEY", None)
+    try:
+        result = _shorten_segment_text(
+            en_text="This is a long sentence.",
+            es_text="Esta es una frase muy larga.",
+            target_sec=2.0,
+        )
+        assert result == "Esta es una frase muy larga."
+    finally:
+        if env_backup:
+            os.environ["ANTHROPIC_API_KEY"] = env_backup
+
+
+def test_text_file_to_speech_calls_shorten_for_request_shorter(tmp_path):
+    """text_file_to_speech calls _shorten_segment_text for REQUEST_SHORTER segments."""
+    from tts_es import text_file_to_speech
+    from foreign_whispers.alignment import AlignAction, AlignedSegment
+    import json
+
+    # Craft a segment that will trigger REQUEST_SHORTER:
+    # src_dur=3.0s, ~27 "ba" syllables in ES text → stretch ≈ 2.0 → REQUEST_SHORTER
+    es_seg = {"start": 0.0, "end": 3.0, "text": "ba" * 27}
+    en_seg = {"start": 0.0, "end": 3.0, "text": "Hello world"}
+
+    es_dir = tmp_path / "translated_transcription"
+    en_dir = tmp_path / "raw_transcription"
+    es_dir.mkdir(); en_dir.mkdir()
+
+    title = "test_shorten"
+    (es_dir / f"{title}.json").write_text(json.dumps({"segments": [es_seg], "text": es_seg["text"]}))
+    (en_dir / f"{title}.json").write_text(json.dumps({"segments": [en_seg], "text": en_seg["text"]}))
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    shorten_calls = []
+
+    def fake_shorten(en_text, es_text, target_sec):
+        shorten_calls.append((en_text, es_text, target_sec))
+        return es_text  # return unchanged
+
+    def fake_synced(engine, text, target_sec, work_dir, stretch_factor=1.0):
+        from pydub import AudioSegment
+        return AudioSegment.silent(duration=int(target_sec * 1000)), 1.0, target_sec
+
+    engine = MagicMock()
+    with patch("tts_es._shorten_segment_text", side_effect=fake_shorten), \
+         patch("tts_es._synced_segment_audio", side_effect=fake_synced):
+        text_file_to_speech(str(es_dir / f"{title}.json"), str(out_dir), tts_engine=engine)
+
+    assert len(shorten_calls) == 1, "Expected _shorten_segment_text to be called once"
+    assert shorten_calls[0][1] == es_seg["text"]
