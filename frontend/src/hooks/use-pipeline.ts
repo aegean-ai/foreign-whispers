@@ -16,6 +16,7 @@ import {
   synthesizeSpeech,
   stitchVideo,
 } from "@/lib/api";
+import { computeConfigEntries, type ConfigEntry } from "@/lib/config-id";
 
 const STAGES: PipelineStage[] = [
   "download",
@@ -38,16 +39,12 @@ const INITIAL_STATE: PipelineState = {
   variants: [],
 };
 
-function makeVariantLabel(mode: string): string {
-  return mode.charAt(0).toUpperCase() + mode.slice(1);
-}
-
-function makeVariantId(videoId: string, mode: string): string {
-  return `${videoId}_${mode}`;
+function makeVariantId(videoId: string, configId: string): string {
+  return `${videoId}::${configId}`;
 }
 
 type Action =
-  | { type: "START"; videoId: string; settings: StudioSettings }
+  | { type: "START"; videoId: string; settings: StudioSettings; configs: ConfigEntry[] }
   | { type: "STAGE_ACTIVE"; stage: PipelineStage }
   | { type: "STAGE_COMPLETE"; stage: PipelineStage; result: unknown; duration_ms: number }
   | { type: "STAGE_ERROR"; stage: PipelineStage; error: string }
@@ -62,14 +59,11 @@ function reducer(state: PipelineState, action: Action): PipelineState {
       return INITIAL_STATE;
 
     case "START": {
-      const modes = action.settings.dubbing.filter(
-        (m) => m === "baseline" || m === "aligned"
-      );
-      const effectiveModes = modes.length > 0 ? modes : ["baseline"];
-      const newVariants: VideoVariant[] = effectiveModes.map((mode) => ({
-        id: makeVariantId(action.videoId, mode),
+      const newVariants: VideoVariant[] = action.configs.map((cfg) => ({
+        id: makeVariantId(action.videoId, cfg.id),
         sourceVideoId: action.videoId,
-        label: makeVariantLabel(mode),
+        configId: cfg.id,
+        label: cfg.label,
         settings: action.settings,
         status: "processing" as const,
       }));
@@ -163,7 +157,8 @@ export function usePipeline() {
   );
 
   const runPipeline = useCallback(async (video: Video, settings: StudioSettings) => {
-    dispatch({ type: "START", videoId: video.id, settings });
+    const configs = computeConfigEntries(settings);
+    dispatch({ type: "START", videoId: video.id, settings, configs });
 
     const run = async <T,>(
       stage: PipelineStage,
@@ -195,13 +190,13 @@ export function usePipeline() {
       await run("transcribe", () => transcribeVideo(dl.video_id));
       await run("translate", () => translateVideo(dl.video_id, "es"));
 
-      // Run TTS + stitch for each selected dubbing mode
-      const modes = settings.dubbing.filter(
-        (m): m is "baseline" | "aligned" => m === "baseline" || m === "aligned"
-      );
-      for (const mode of modes.length > 0 ? modes : ["baseline" as const]) {
-        await run("tts", () => synthesizeSpeech(dl.video_id, mode));
-        await run("stitch", () => stitchVideo(dl.video_id, mode));
+      // Run TTS + stitch for each config entry.
+      // SELECT_VARIANT before each iteration so STAGE_ERROR marks the correct variant.
+      for (const cfg of configs) {
+        dispatch({ type: "SELECT_VARIANT", variantId: makeVariantId(video.id, cfg.id) });
+        const alignment = cfg.dubbing === "aligned";
+        await run("tts", () => synthesizeSpeech(dl.video_id, cfg.id, alignment));
+        await run("stitch", () => stitchVideo(dl.video_id, cfg.id));
       }
 
       dispatch({ type: "PIPELINE_COMPLETE" });

@@ -26,11 +26,14 @@ export function VideoCanvas({
     (v) => v.sourceVideoId === videoId && v.status === "complete"
   );
 
+  const activeVariant = variants.find((v) => v.id === activeVariantId);
+  const configId = activeVariant?.configId ?? "";
+
   // Determine what to show in the canvas
   const showDubbed = isComplete && activeVariantId !== "original";
   const videoSrc = videoId
-    ? showDubbed
-      ? getVideoUrl(videoId)
+    ? showDubbed && configId
+      ? getVideoUrl(videoId, configId)
       : getOriginalVideoUrl(videoId)
     : undefined;
   const captionsSrc = videoId

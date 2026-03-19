@@ -29,6 +29,7 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import type { Video, PipelineState, StudioSettings, VideoVariant } from "@/lib/types";
+import { computeConfigEntries } from "@/lib/config-id";
 
 function getVideoStatus(
   video: Video,
@@ -67,6 +68,8 @@ export function AppSidebar({
   onStartPipeline,
   ...props
 }: AppSidebarProps) {
+  const configEntries = computeConfigEntries(settings);
+
   return (
     <Sidebar {...props}>
       <SidebarHeader>
@@ -101,9 +104,13 @@ export function AppSidebar({
                       isActive={isActive}
                       onClick={() => onSelectVideo(video.id)}
                       tooltip={video.title}
+                      className={`h-auto py-1.5 ${isActive ? "border-l-2 border-primary bg-sidebar-accent/80 pl-1.5" : ""}`}
                     >
-                      <VideoIcon />
-                      <span>{video.title}</span>
+                      <VideoIcon className="mt-0.5 shrink-0" />
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm leading-snug">{video.title}</span>
+                        <span className="text-[10px] text-muted-foreground font-mono">{video.id}</span>
+                      </div>
                     </SidebarMenuButton>
                     <SidebarMenuBadge>
                       <Badge variant={status.variant} className="text-[9px] px-1 py-0 leading-tight">
@@ -140,6 +147,30 @@ export function AppSidebar({
                 onToggle={(v) => onToggleSetting("voiceCloning", v)}
               />
             </Accordion>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarSeparator />
+
+        {/* Config Entries */}
+        <SidebarGroup>
+          <SidebarGroupLabel>
+            Configurations ({configEntries.length})
+          </SidebarGroupLabel>
+          <SidebarGroupContent className="px-2">
+            <div className="flex flex-col gap-1">
+              {configEntries.map((cfg) => (
+                <div
+                  key={cfg.id}
+                  className="flex items-center gap-2 rounded-md border border-border/40 px-2 py-1.5 text-xs"
+                >
+                  <code className="text-[10px] text-muted-foreground font-mono shrink-0">
+                    {cfg.id}
+                  </code>
+                  <span className="truncate">{cfg.label}</span>
+                </div>
+              ))}
+            </div>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

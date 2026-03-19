@@ -77,6 +77,7 @@ export interface StudioSettings {
 export interface VideoVariant {
   id: string;
   sourceVideoId: string;
+  configId: string;
   label: string;
   settings: StudioSettings;
   status: "complete" | "processing" | "error";

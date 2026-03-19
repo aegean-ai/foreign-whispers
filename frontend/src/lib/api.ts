@@ -50,32 +50,35 @@ export async function translateVideo(
 
 export async function synthesizeSpeech(
   videoId: string,
-  mode: "baseline" | "aligned" = "baseline"
+  config: string,
+  alignment: boolean = false
 ): Promise<TTSResponse> {
-  return fetchJson<TTSResponse>(`/api/tts/${videoId}?mode=${mode}`, {
-    method: "POST",
-  });
+  return fetchJson<TTSResponse>(
+    `/api/tts/${videoId}?config=${config}&alignment=${alignment}`,
+    { method: "POST" }
+  );
 }
 
 export async function stitchVideo(
   videoId: string,
-  mode: "baseline" | "aligned" = "baseline"
+  config: string
 ): Promise<StitchResponse> {
-  return fetchJson<StitchResponse>(`/api/stitch/${videoId}?mode=${mode}`, {
-    method: "POST",
-  });
+  return fetchJson<StitchResponse>(
+    `/api/stitch/${videoId}?config=${config}`,
+    { method: "POST" }
+  );
 }
 
-export function getVideoUrl(videoId: string, mode: "baseline" | "aligned" = "baseline"): string {
-  return `/api/video/${videoId}?mode=${mode}`;
+export function getVideoUrl(videoId: string, config: string): string {
+  return `/api/video/${videoId}?config=${config}`;
 }
 
 export function getOriginalVideoUrl(videoId: string): string {
   return `/api/video/${videoId}/original`;
 }
 
-export function getAudioUrl(videoId: string, mode: "baseline" | "aligned" = "baseline"): string {
-  return `/api/audio/${videoId}?mode=${mode}`;
+export function getAudioUrl(videoId: string, config: string): string {
+  return `/api/audio/${videoId}?config=${config}`;
 }
 
 export function getCaptionsUrl(videoId: string): string {
