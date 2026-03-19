@@ -4,6 +4,7 @@ import type {
   TranslateResponse,
   TTSResponse,
   StitchResponse,
+  StudioSettings,
 } from "./types";
 
 class ApiError extends Error {
@@ -48,8 +49,22 @@ export async function translateVideo(
   );
 }
 
-export async function synthesizeSpeech(videoId: string): Promise<TTSResponse> {
-  return fetchJson<TTSResponse>(`/api/tts/${videoId}`, {
+export async function synthesizeSpeech(
+  videoId: string,
+  settings?: StudioSettings
+): Promise<TTSResponse> {
+  const params = new URLSearchParams();
+  if (settings?.dubbing.includes("aligned")) {
+    params.set("alignment", "on");
+  }
+  if (settings?.diarization.length) {
+    params.set("diarization", settings.diarization.join(","));
+  }
+  if (settings?.voiceCloning.length) {
+    params.set("voice_cloning", settings.voiceCloning.join(","));
+  }
+  const qs = params.toString();
+  return fetchJson<TTSResponse>(`/api/tts/${videoId}${qs ? `?${qs}` : ""}`, {
     method: "POST",
   });
 }
