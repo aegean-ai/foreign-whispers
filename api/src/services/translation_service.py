@@ -47,6 +47,52 @@ class TranslationService:
         result["language"] = to_code
         return result
 
+    async def rerank_for_duration(
+        self,
+        en_transcript: dict,
+        es_transcript: dict,
+        from_code: str = "en",
+        to_code: str = "es",
+    ) -> dict:
+        """Re-rank translated segments that exceed their duration budget.
+
+        For each segment where decide_action() returns REQUEST_SHORTER, calls
+        the PydanticAI translation agent to produce shorter alternatives and
+        picks the best fit.  Returns a deep copy of es_transcript; original
+        is never mutated.  If pydantic-ai is not installed, returns es_transcript
+        unchanged.
+        """
+        import copy
+        from foreign_whispers.alignment import AlignAction, compute_segment_metrics, decide_action
+        from foreign_whispers.agents import get_shorter_translations
+
+        result = copy.deepcopy(es_transcript)
+        metrics = compute_segment_metrics(en_transcript, es_transcript)
+
+        for m in metrics:
+            if decide_action(m) != AlignAction.REQUEST_SHORTER:
+                continue
+            segs = es_transcript.get("segments", [])
+            prev = segs[m.index - 1]["text"] if m.index > 0 else ""
+            nxt  = segs[m.index + 1]["text"] if m.index < len(segs) - 1 else ""
+
+            candidates = await get_shorter_translations(
+                source_text       = m.source_text,
+                baseline_es       = m.translated_text,
+                target_duration_s = m.source_duration_s,
+                context_prev      = prev,
+                context_next      = nxt,
+            )
+
+            if candidates:
+                best = min(
+                    candidates,
+                    key=lambda c: abs(len(c.text) / 15.0 - m.source_duration_s),
+                )
+                result["segments"][m.index]["text"] = best.text
+
+        return result
+
     @staticmethod
     def title_for_video_id(video_id: str, search_dir: pathlib.Path) -> str | None:
         """Find a title by scanning *search_dir* for JSON files."""

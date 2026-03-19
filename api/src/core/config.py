@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     xtts_api_url: str = "http://localhost:8020"
     whisper_api_url: str = "http://localhost:8000"
 
+    # HuggingFace token for pyannote speaker diarization model
+    hf_token: str = ""
+
+    # Logfire write token — set via FW_LOGFIRE_WRITE_TOKEN (or put in .env)
+    logfire_write_token: str = ""
+
     model_config = {"env_prefix": "FW_"}
 
     @model_validator(mode="after")

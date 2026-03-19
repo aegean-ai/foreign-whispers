@@ -22,6 +22,19 @@ async def lifespan(app: FastAPI):
     app.state._tts_model = None
     logger.info("Application ready (models will load on first use).")
 
+    # Configure Logfire if a write token is available
+    if settings.logfire_write_token:
+        try:
+            import logfire
+            logfire.configure(
+                write_token=settings.logfire_write_token,
+                service_name="foreign-whispers",
+            )
+            logfire.instrument_fastapi(app)
+            logger.info("Logfire tracing enabled.")
+        except ImportError:
+            logger.info("Logfire not installed — tracing disabled.")
+
     yield
 
     # Cleanup
@@ -79,6 +92,8 @@ def create_app() -> FastAPI:
     app.include_router(translate_router)
     app.include_router(tts_router)
     app.include_router(stitch_router)
+    from api.src.routers.align import router as align_router
+    app.include_router(align_router)
 
     @app.get("/healthz")
     async def healthz():

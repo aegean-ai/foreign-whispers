@@ -4,86 +4,91 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-This is a multi-project repository containing student submissions for the **Foreign Whispers** course project. Each team built a pipeline that accepts YouTube videos from the [60 Minutes Interviews playlist](https://www.youtube.com/playlist?list=PLI1yx5Z0Lrv77D_g1tvF9u3FVqnrNbCRL) and outputs the video with spoken and written subtitles in another language.
+**Foreign Whispers** — a pipeline that accepts YouTube videos and outputs the video with spoken and written subtitles in Spanish. The pipeline covers:
 
-The project spec defined six milestones:
-1. Download videos + closed captions from YouTube (ground truth English)
+1. Download video + closed captions from YouTube
 2. Speech-to-text via Whisper
-3. English → target language translation (no commercial APIs: no Google/Microsoft/OpenAI Translate)
-4. Translated text → speech via open-source TTS
-5a. Streamlit UI on Hugging Face Spaces + 30-second pitch video
-6. (Extra credit) Django app deployed via Docker Compose
+3. English → Spanish translation (offline, via `argostranslate`)
+4. Translated text → speech via open-source TTS (XTTS v2)
+5. Next.js frontend + FastAPI backend
 
-```
+```text
 foreign-whispers/
-├── app.py                       # Streamlit UI entry point
-├── main.py                      # Re-exports FastAPI app from api/src/
 ├── api/src/                     # Layered FastAPI backend
 │   ├── main.py                  # App factory (create_app)
-│   ├── core/config.py           # Pydantic settings
+│   ├── core/config.py           # Pydantic settings (env-driven)
 │   ├── core/dependencies.py     # FastAPI Depends providers
-│   ├── routers/                 # Route modules
+│   ├── routers/                 # Route modules (videos, pipeline, align)
 │   ├── schemas/                 # Pydantic request/response models
 │   ├── services/                # Business logic
 │   └── inference/               # Whisper/TTS backend abstraction
-├── download_video.py
-├── transcribe.py
-├── translate_en_to_es.py
-├── tts_es.py
-├── translated_output.py
-├── transcriptions_en/           # 10 processed transcripts
-└── transcriptions_es/           # 10 translated transcripts
+├── foreign_whispers/            # Alignment/evaluation library
+│   ├── alignment.py             # global_align(), AlignAction, SegmentMetrics
+│   ├── backends.py              # DurationAwareTTSBackend ABC
+│   ├── vad.py                   # Silero VAD wrapper
+│   ├── diarization.py           # pyannote.audio wrapper
+│   ├── agents.py                # PydanticAI agents (lazy instantiation)
+│   └── evaluation.py           # clip_evaluation_report()
+├── frontend/                    # Next.js UI (port 8501 in Docker)
+├── video_registry.yml           # Single source of truth for pipeline videos
+├── pipeline_data/               # Runtime artifacts (audio, transcripts, video)
+└── docker-compose.yml           # All services
 ```
 
-**The main gaps to address** (tracked as beads issues) are TTS audio-video synchronisation (`tts_es.py` has no timestamp alignment — issue `ccu`) and missing Hugging Face Spaces deployment (issue `jhg`).
+## Running the App
 
-## Common AI Pipeline
+**Always use Docker Compose — never launch with `uvicorn` or `next dev` directly.**
 
-All three projects implement variations of the same pipeline:
-
-```
-YouTube URL → Download video + captions → Transcribe (Whisper) → Translate → TTS → Embed audio/subs → Output video
-```
-
-**Technologies shared across projects:**
-- `openai-whisper` — speech-to-text transcription
-- `pytube` / `yt-dlp` — video downloading
-- `youtube-transcript-api` — caption extraction
-- `moviepy` — video composition
-- Mozilla `TTS` — text-to-speech synthesis
-
-## Streamlit App (root)
-
-### Running
+This host has an NVIDIA GPU; always use the `nvidia` profile:
 
 ```bash
-uv sync
-streamlit run app.py
+docker compose --profile nvidia up -d
 ```
 
-FastAPI backend:
+- Frontend (Next.js): <http://localhost:8501>
+- API (FastAPI): <http://localhost:8080>
+- STT (Whisper/speaches): <http://localhost:8000>
+- TTS (XTTS): <http://localhost:8020>
+
+After changing Python source or `video_registry.yml`, rebuild the API image:
+
 ```bash
-uvicorn main:app --reload
+docker compose --profile nvidia build api-gpu
+docker compose --profile nvidia up -d api-gpu
 ```
 
-### Architecture
+To stop all services:
 
-Flat utility-module structure — each processing step is its own file:
-- `download_video.py`
-- `transcribe.py`
-- `translate_en_to_es.py` — uses `argostranslate` (OpenNMT, offline)
-- `tts_es.py`
-- `translated_output.py` — video stitching
+```bash
+docker compose --profile nvidia down
+```
 
-`app.py` coordinates these modules; it caches results by video ID to skip reprocessing.
+To tail logs:
 
-Intermediate files are stored under `./ui/` subdirectories: `raw_video/`, `raw_transcription/`, `translated_transcription/`, `translated_audio/`, `translated_video/`.
+```bash
+docker compose --profile nvidia logs -f
+```
 
-Transcripts are stored as JSON with segment structure: `[{"start": float, "end": float, "text": str}, ...]`
+## Video Registry
 
-## Development Notes
+`video_registry.yml` is the single source of truth for all videos in the pipeline. Add entries there; the API reads it at startup to populate `/api/videos`. After adding a video, rebuild and restart the API container (see above).
 
-- ffmpeg must be installed system-wide for moviepy/audio processing to work
-- Whisper model is downloaded on first use and cached by the library; GPU acceleration requires CUDA
-- `argostranslate` language packs must be downloaded before first use (handled inside `translate_en_to_es.py` via `download_and_install_package()`)
-- `translated_output.py` requires ImageMagick system-wide for `TextClip` subtitle rendering (see beads issue `ttl`)
+## Architecture
+
+### Pipeline flow
+
+```text
+YouTube URL → yt-dlp download → Whisper STT → argostranslate → XTTS TTS → moviepy/ffmpeg stitch → output video
+```
+
+### Key design decisions
+
+- `video_registry.yml` drives the video list; no database.
+- `foreign_whispers` library handles temporal alignment between English segments and Spanish TTS audio.
+- Optional heavy deps (`silero-vad`, `pyannote.audio`, `pydantic-ai`, `logfire`) degrade gracefully when absent.
+- PydanticAI agents use **lazy instantiation** (inside functions, not module-level) to avoid import-time failure when `ANTHROPIC_API_KEY` is absent.
+
+## Open Issues
+
+- `fw-tov`: TTS temporal alignment implementation (design doc: `docs/superpowers/specs/2026-03-17-tts-temporal-alignment-design.md`)
+- `jhg`: Hugging Face Spaces deployment
