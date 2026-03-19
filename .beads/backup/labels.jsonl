@@ -7,6 +7,8 @@
 {"issue_id":"fw-381","label":"m4"}
 {"issue_id":"fw-381","label":"m6"}
 {"issue_id":"fw-381","label":"task"}
+{"issue_id":"fw-3h2","label":"frontend"}
+{"issue_id":"fw-3h2","label":"ui"}
 {"issue_id":"fw-4f0","label":"bug"}
 {"issue_id":"fw-4f0","label":"m1"}
 {"issue_id":"fw-4f0","label":"setup"}
@@ -17,10 +19,14 @@
 {"issue_id":"fw-5ss","label":"bug"}
 {"issue_id":"fw-5ss","label":"m3"}
 {"issue_id":"fw-5ss","label":"performance"}
+{"issue_id":"fw-69b","label":"frontend"}
+{"issue_id":"fw-69b","label":"ui"}
 {"issue_id":"fw-6e1","label":"bug"}
 {"issue_id":"fw-6e1","label":"portability"}
 {"issue_id":"fw-901","label":"m5a"}
 {"issue_id":"fw-901","label":"task"}
+{"issue_id":"fw-9pw","label":"frontend"}
+{"issue_id":"fw-9pw","label":"ui"}
 {"issue_id":"fw-a48","label":"api rename"}
 {"issue_id":"fw-b54","label":"restructure fastapi"}
 {"issue_id":"fw-b54.1","label":"restructure cleanup"}
