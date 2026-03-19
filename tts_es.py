@@ -169,22 +169,25 @@ def files_from_dir(dir_path) -> list:
     return es_files
 
 
-def _synced_segment_audio(tts_engine, text: str, target_sec: float, work_dir, stretch_factor: float = 1.0) -> AudioSegment | None:
+def _synced_segment_audio(tts_engine, text: str, target_sec: float, work_dir, stretch_factor: float = 1.0) -> tuple:
     """Generate TTS audio for *text* and time-stretch it to *target_sec*.
 
-    Returns an AudioSegment whose duration is within ~50 ms of target_sec.
-    Returns None when target_sec <= 0 (malformed segment).
+    Returns a tuple (AudioSegment | None, speed_factor: float, raw_duration_s: float).
+    - AudioSegment is within ~50 ms of target_sec, or None when target_sec <= 0.
+    - speed_factor is the actual computed and clamped speed ratio used for stretching.
+    - raw_duration_s is the pre-stretch duration from librosa.
+    Returns (None, 0.0, 0.0) when target_sec <= 0 (malformed segment).
     Returns silence of target_sec when text is empty/whitespace.
     Falls back to silence if TTS fails (timeout, network error, etc.).
     """
     if target_sec <= 0:
-        return None
+        return (None, 0.0, 0.0)
 
     target_ms = int(target_sec * 1000)
 
     # Empty text -> silence
     if not text or not text.strip():
-        return AudioSegment.silent(duration=target_ms)
+        return (AudioSegment.silent(duration=target_ms), 1.0, 0.0)
 
     work_dir = pathlib.Path(work_dir)
 
@@ -194,14 +197,14 @@ def _synced_segment_audio(tts_engine, text: str, target_sec: float, work_dir, st
         tts_engine.tts_to_file(text=text, file_path=str(raw_wav))
     except Exception as exc:
         print(f"[tts_es] TTS failed for segment ({exc}), using silence")
-        return AudioSegment.silent(duration=target_ms)
+        return (AudioSegment.silent(duration=target_ms), 1.0, 0.0)
 
     # Load with librosa for time-stretching
     y, sr = librosa.load(str(raw_wav), sr=None)
     raw_duration = len(y) / sr
 
     if raw_duration == 0:
-        return AudioSegment.silent(duration=target_ms)
+        return (AudioSegment.silent(duration=target_ms), 1.0, 0.0)
 
     # Compute speed factor — baseline (legacy) path uses wide clamp
     if not _ALIGNMENT_ENABLED:
@@ -227,7 +230,7 @@ def _synced_segment_audio(tts_engine, text: str, target_sec: float, work_dir, st
     elif len(segment_audio) > target_ms:
         segment_audio = segment_audio[:target_ms]
 
-    return segment_audio
+    return (segment_audio, speed_factor, raw_duration)
 
 
 def text_to_speech(text, output_file_path):
@@ -284,7 +287,13 @@ def _write_align_report(
         from foreign_whispers.evaluation import clip_evaluation_report
         summary = clip_evaluation_report(metrics, aligned)
     except Exception:
-        summary = {}
+        summary = {
+            "mean_abs_duration_error_s": 0.0,
+            "pct_severe_stretch": 0.0,
+            "n_gap_shifts": 0,
+            "n_translation_retries": 0,
+            "total_cumulative_drift_s": 0.0,
+        }
 
     report = {**summary, "alignment_enabled": _ALIGNMENT_ENABLED, "segments": segment_details}
     sidecar_path = pathlib.Path(output_path) / f"{stem}.align.json"
@@ -379,19 +388,18 @@ def text_file_to_speech(source_path, output_path, tts_engine=None):
             aligned_seg = align_map.get(i)
             stretch_factor = aligned_seg.stretch_factor if aligned_seg else 1.0
 
-            seg_audio = _synced_segment_audio(
+            seg_audio, seg_speed_factor, seg_raw_duration = _synced_segment_audio(
                 engine, seg["text"], target_sec, tmpdir,
                 stretch_factor=stretch_factor,
             )
 
-            raw_duration_s = round(len(seg_audio) / 1000.0, 3) if seg_audio is not None else 0.0
             segment_details.append({
                 "index": i,
                 "text": seg["text"],
                 "target_sec": round(target_sec, 3),
                 "stretch_factor": round(stretch_factor, 3),
-                "raw_duration_s": raw_duration_s,
-                "speed_factor": round(stretch_factor, 3),
+                "raw_duration_s": round(seg_raw_duration, 3),
+                "speed_factor": round(seg_speed_factor, 3),
                 "action": aligned_seg.action.value if aligned_seg and hasattr(aligned_seg, "action") else "unknown",
             })
 
