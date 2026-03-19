@@ -170,44 +170,43 @@ def files_from_dir(dir_path) -> list:
     return es_files
 
 
-def _synced_segment_audio(tts_engine, text: str, target_sec: float, work_dir, stretch_factor: float = 1.0, alignment_enabled: bool = True) -> tuple:
-    """Generate TTS audio for *text* and time-stretch it to *target_sec*.
+def _synthesize_raw(tts_engine, text: str, wav_path: str) -> bytes | None:
+    """GPU-bound: call TTS engine and return raw WAV bytes, or None on failure."""
+    if not text or not text.strip():
+        return None
+    try:
+        tts_engine.tts_to_file(text=text, file_path=wav_path)
+        return pathlib.Path(wav_path).read_bytes()
+    except Exception as exc:
+        print(f"[tts_es] TTS failed for segment ({exc}), using silence")
+        return None
 
-    Returns a tuple (AudioSegment | None, speed_factor: float, raw_duration_s: float).
-    - AudioSegment is within ~50 ms of target_sec, or None when target_sec <= 0.
-    - speed_factor is the actual computed and clamped speed ratio used for stretching.
-    - raw_duration_s is the pre-stretch duration from librosa.
-    Returns (None, 0.0, 0.0) when target_sec <= 0 (malformed segment).
-    Returns silence of target_sec when text is empty/whitespace.
-    Falls back to silence if TTS fails (timeout, network error, etc.).
+
+def _postprocess_segment(raw_wav_bytes: bytes | None, target_sec: float,
+                         stretch_factor: float, alignment_enabled: bool,
+                         work_dir: str) -> tuple:
+    """CPU-bound: time-stretch raw TTS audio to match target duration.
+
+    Returns (AudioSegment | None, speed_factor, raw_duration_s).
     """
     if target_sec <= 0:
         return (None, 0.0, 0.0)
 
     target_ms = int(target_sec * 1000)
 
-    # Empty text -> silence
-    if not text or not text.strip():
+    if raw_wav_bytes is None:
         return (AudioSegment.silent(duration=target_ms), 1.0, 0.0)
 
-    work_dir = pathlib.Path(work_dir)
+    work_path = pathlib.Path(work_dir)
+    raw_wav = work_path / "raw_segment.wav"
+    raw_wav.write_bytes(raw_wav_bytes)
 
-    # Generate raw TTS audio to a temp WAV
-    raw_wav = work_dir / "raw_segment.wav"
-    try:
-        tts_engine.tts_to_file(text=text, file_path=str(raw_wav))
-    except Exception as exc:
-        print(f"[tts_es] TTS failed for segment ({exc}), using silence")
-        return (AudioSegment.silent(duration=target_ms), 1.0, 0.0)
-
-    # Load with librosa for time-stretching
     y, sr = librosa.load(str(raw_wav), sr=None)
     raw_duration = len(y) / sr
 
     if raw_duration == 0:
         return (AudioSegment.silent(duration=target_ms), 1.0, 0.0)
 
-    # Compute speed factor — baseline (legacy) path uses wide clamp
     if not alignment_enabled:
         speed_factor = raw_duration / target_sec
         speed_factor = max(_SPEED_MIN_LEGACY, min(_SPEED_MAX_LEGACY, speed_factor))
@@ -216,14 +215,11 @@ def _synced_segment_audio(tts_engine, text: str, target_sec: float, work_dir, st
         speed_factor = raw_duration / effective_target
         speed_factor = max(SPEED_MIN, min(SPEED_MAX, speed_factor))
 
-    # Time-stretch using rubberband
     y_stretched = pyrubberband.time_stretch(y, sr, speed_factor)
 
-    # Write stretched audio
-    stretched_wav = work_dir / "stretched_segment.wav"
+    stretched_wav = work_path / "stretched_segment.wav"
     sf.write(str(stretched_wav), y_stretched, sr)
 
-    # Load as AudioSegment and trim/pad to exact target duration
     segment_audio = AudioSegment.from_wav(str(stretched_wav))
 
     if len(segment_audio) < target_ms:
@@ -232,6 +228,18 @@ def _synced_segment_audio(tts_engine, text: str, target_sec: float, work_dir, st
         segment_audio = segment_audio[:target_ms]
 
     return (segment_audio, speed_factor, raw_duration)
+
+
+def _synced_segment_audio(tts_engine, text: str, target_sec: float, work_dir, stretch_factor: float = 1.0, alignment_enabled: bool = True) -> tuple:
+    """Generate TTS audio for *text* and time-stretch it to *target_sec*.
+
+    Convenience wrapper kept for callers that don't use the batch path.
+    """
+    if target_sec <= 0:
+        return (None, 0.0, 0.0)
+    raw_wav = str(pathlib.Path(work_dir) / "raw_segment.wav")
+    raw_bytes = _synthesize_raw(tts_engine, text, raw_wav)
+    return _postprocess_segment(raw_bytes, target_sec, stretch_factor, alignment_enabled, str(work_dir))
 
 
 def text_to_speech(text, output_file_path):
@@ -414,46 +422,82 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
         _metrics_list, align_map = [], {}
     _aligned_list = list(align_map.values())
 
+    # ── Prepare per-segment metadata ────────────────────────────────────
+    seg_metas = []
+    for i, seg in enumerate(segments):
+        aligned_seg = align_map.get(i)
+        stretch_factor = aligned_seg.stretch_factor if aligned_seg else 1.0
+        target_sec = seg["end"] - seg["start"]
+
+        seg_text = seg["text"]
+        if aligned_seg is not None:
+            from foreign_whispers.alignment import AlignAction
+            if aligned_seg.action == AlignAction.REQUEST_SHORTER:
+                en_text = ""
+                en_segs = en_transcript.get("segments", [])
+                if i < len(en_segs):
+                    en_text = en_segs[i].get("text", "")
+                seg_text = _shorten_segment_text(en_text, seg["text"], target_sec)
+
+        seg_metas.append({
+            "index": i,
+            "text": seg_text,
+            "start": seg["start"],
+            "end": seg["end"],
+            "target_sec": target_sec,
+            "stretch_factor": stretch_factor,
+            "aligned_seg": aligned_seg,
+        })
+
+    # ── Phase 1: GPU synthesis (concurrent) ───────────────────────────
+    # Submit all TTS calls to a thread pool so the GPU stays busy while
+    # previous results are being downloaded / decoded.
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    _TTS_WORKERS = int(os.getenv("FW_TTS_WORKERS", "3"))
+
+    raw_wav_map: dict[int, bytes | None] = {}
+
+    with tempfile.TemporaryDirectory() as synth_dir:
+        def _do_synth(idx: int, text: str) -> tuple[int, bytes | None]:
+            wav_path = str(pathlib.Path(synth_dir) / f"seg_{idx}.wav")
+            return idx, _synthesize_raw(engine, text, wav_path)
+
+        with ThreadPoolExecutor(max_workers=_TTS_WORKERS) as pool:
+            futures = {
+                pool.submit(_do_synth, m["index"], m["text"]): m["index"]
+                for m in seg_metas
+            }
+            for fut in as_completed(futures):
+                idx, raw_bytes = fut.result()
+                raw_wav_map[idx] = raw_bytes
+
+    print(f" ({len(segments)} segments synthesized)", end="")
+
+    # ── Phase 2: CPU post-processing (sequential assembly) ────────────
     with tempfile.TemporaryDirectory() as tmpdir:
         combined = AudioSegment.empty()
         cursor_ms = 0
         segment_details = []
 
-        for i, seg in enumerate(segments):
-            start_ms = int((seg["start"] + offset) * 1000)
-            target_sec = seg["end"] - seg["start"]
+        for m in seg_metas:
+            i = m["index"]
+            start_ms = int((m["start"] + offset) * 1000)
 
             if start_ms > cursor_ms:
                 combined += AudioSegment.silent(duration=start_ms - cursor_ms)
                 cursor_ms = start_ms
 
-            # align_map is keyed by AlignedSegment.index which equals the enumeration
-            # index from compute_segment_metrics — safe as long as ES segments are not
-            # filtered before this call.
-            aligned_seg = align_map.get(i)
-            stretch_factor = aligned_seg.stretch_factor if aligned_seg else 1.0
-
-            seg_text = seg["text"]
-            if aligned_seg is not None:
-                from foreign_whispers.alignment import AlignAction
-                if aligned_seg.action == AlignAction.REQUEST_SHORTER:
-                    en_text = ""
-                    en_segs = en_transcript.get("segments", [])
-                    if i < len(en_segs):
-                        en_text = en_segs[i].get("text", "")
-                    seg_text = _shorten_segment_text(en_text, seg["text"], target_sec)
-
-            seg_audio, seg_speed_factor, seg_raw_duration = _synced_segment_audio(
-                engine, seg_text, target_sec, tmpdir,
-                stretch_factor=stretch_factor,
-                alignment_enabled=use_alignment,
+            seg_audio, seg_speed_factor, seg_raw_duration = _postprocess_segment(
+                raw_wav_map[i], m["target_sec"], m["stretch_factor"],
+                use_alignment, tmpdir,
             )
 
+            aligned_seg = m["aligned_seg"]
             segment_details.append({
                 "index": i,
-                "text": seg_text,
-                "target_sec": round(target_sec, 3),
-                "stretch_factor": round(stretch_factor, 3),
+                "text": m["text"],
+                "target_sec": round(m["target_sec"], 3),
+                "stretch_factor": round(m["stretch_factor"], 3),
                 "raw_duration_s": round(seg_raw_duration, 3),
                 "speed_factor": round(seg_speed_factor, 3),
                 "action": aligned_seg.action.value if aligned_seg and hasattr(aligned_seg, "action") else "unknown",
