@@ -21,8 +21,12 @@ XTTS_LANGUAGE = os.getenv("XTTS_LANGUAGE", "es")
 # Default is "on" (new clamped path). Useful for A/B comparisons.
 _ALIGNMENT_ENABLED = os.getenv("FW_ALIGNMENT", "on").lower() != "off"
 
-SPEED_MIN = 0.85
+SPEED_MIN = 0.75
 SPEED_MAX = 1.25
+# When TTS audio is less than this fraction of the target window, skip
+# time-stretching entirely — play at natural speed and pad with silence.
+# Prevents comically slow speech in windows with long narrator pauses.
+_STRETCH_SKIP_RATIO = 0.5
 _SPEED_MIN_LEGACY = 0.1
 _SPEED_MAX_LEGACY = 10.0
 
@@ -207,15 +211,24 @@ def _postprocess_segment(raw_wav_bytes: bytes | None, target_sec: float,
     if raw_duration == 0:
         return (AudioSegment.silent(duration=target_ms), 1.0, 0.0)
 
+    duration_ratio = raw_duration / target_sec
+
     if not alignment_enabled:
-        speed_factor = raw_duration / target_sec
+        speed_factor = duration_ratio
         speed_factor = max(_SPEED_MIN_LEGACY, min(_SPEED_MAX_LEGACY, speed_factor))
+    elif duration_ratio < _STRETCH_SKIP_RATIO:
+        # TTS is dramatically shorter than target — narrator was pausing.
+        # Play at natural speed; silence padding below handles the gap.
+        speed_factor = 1.0
     else:
         effective_target = target_sec * max(stretch_factor, 0.1)
         speed_factor = raw_duration / effective_target
         speed_factor = max(SPEED_MIN, min(SPEED_MAX, speed_factor))
 
-    y_stretched = pyrubberband.time_stretch(y, sr, speed_factor)
+    if abs(speed_factor - 1.0) > 0.01:
+        y_stretched = pyrubberband.time_stretch(y, sr, speed_factor)
+    else:
+        y_stretched = y
 
     stretched_wav = work_path / "stretched_segment.wav"
     sf.write(str(stretched_wav), y_stretched, sr)
