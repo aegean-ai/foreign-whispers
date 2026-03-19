@@ -25,20 +25,21 @@ async def _run_in_threadpool(executor, fn, *args, **kwargs):
 async def tts_endpoint(
     video_id: str,
     request: Request,
-    mode: str = Query("baseline", pattern="^(baseline|aligned)$"),
+    config: str = Query("default", pattern=r"^c-[0-9a-f]{7}$"),
+    alignment: bool = Query(False),
 ):
     """Generate TTS audio for a translated transcript.
 
-    *mode* selects baseline (legacy wide-clamp) or aligned (clamped stretch).
-    Output is written to ``translated_audio/<mode>/`` so both can coexist.
+    *config* is an opaque directory name for caching.
+    *alignment* enables temporal alignment (clamped stretch).
     """
     trans_dir = settings.data_dir / "translated_transcription"
-    audio_dir = settings.data_dir / "translated_audio" / mode
+    audio_dir = settings.data_dir / "translated_audio" / config
     audio_dir.mkdir(parents=True, exist_ok=True)
 
     svc = TTSService(
         ui_dir=settings.data_dir,
-        tts_engine=None,  # auto-detect
+        tts_engine=None,
     )
 
     title = resolve_title(video_id)
@@ -47,18 +48,15 @@ async def tts_endpoint(
 
     wav_path = audio_dir / f"{title}.wav"
 
-    # Skip if already generated
     if wav_path.exists():
         return {
             "video_id": video_id,
             "audio_path": str(wav_path),
-            "mode": mode,
+            "config": config,
         }
 
     source_path = str(trans_dir / f"{title}.json")
-    alignment = mode == "aligned"
 
-    # Run TTS in thread pool to avoid blocking the event loop
     await _run_in_threadpool(
         None, svc.text_file_to_speech, source_path, str(audio_dir), alignment=alignment
     )
@@ -66,23 +64,24 @@ async def tts_endpoint(
     return {
         "video_id": video_id,
         "audio_path": str(wav_path),
-        "mode": mode,
+        "config": config,
     }
 
 
 @router.get("/audio/{video_id}")
 async def get_audio(
     video_id: str,
-    mode: str = Query("baseline", pattern="^(baseline|aligned)$"),
+    config: str = Query("default", pattern=r"^c-[0-9a-f]{7}$"),
 ):
     """Stream the TTS-synthesized WAV audio."""
-    audio_dir = settings.data_dir / "translated_audio" / mode
-
     title = resolve_title(video_id)
     if title is None:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found in index")
 
-    audio_path = audio_dir / f"{title}.wav"
+    # Config-specific dir first, then legacy flat dir for backwards compat
+    audio_path = settings.data_dir / "translated_audio" / config / f"{title}.wav"
+    if not audio_path.exists():
+        audio_path = settings.data_dir / "translated_audio" / f"{title}.wav"
     if not audio_path.exists():
         raise HTTPException(status_code=404, detail="Audio file not found")
 
