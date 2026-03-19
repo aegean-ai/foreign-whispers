@@ -2,6 +2,7 @@
 
 import { AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
+import { MicIcon } from "lucide-react";
 
 interface VoiceCloningAccordionProps {
   selected: string[];
@@ -16,7 +17,10 @@ const METHODS = [
 export function VoiceCloningAccordion({ selected, onToggle }: VoiceCloningAccordionProps) {
   return (
     <AccordionItem value="voice-cloning-methods">
-      <AccordionTrigger className="px-3 text-sm">Voice Cloning Methods</AccordionTrigger>
+      <AccordionTrigger className="px-3 text-sm">
+        <MicIcon className="size-3.5 mr-1.5" />
+        Voice Cloning
+      </AccordionTrigger>
       <AccordionContent className="px-3 pb-3">
         <div className="flex flex-col gap-2">
           {METHODS.map((m) => (

@@ -4,7 +4,7 @@ import * as React from "react";
 import {
   FilmIcon,
   VideoIcon,
-  SettingsIcon,
+  WorkflowIcon,
   PlayIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -122,7 +122,7 @@ export function AppSidebar({
         {/* Pipeline Controls */}
         <SidebarGroup>
           <SidebarGroupLabel>
-            <SettingsIcon className="size-3.5 mr-1.5" />
+            <WorkflowIcon className="size-3.5 mr-1.5" />
             Pipeline Settings
           </SidebarGroupLabel>
           <SidebarGroupContent className="px-2">

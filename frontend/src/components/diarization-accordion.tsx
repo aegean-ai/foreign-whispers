@@ -2,6 +2,7 @@
 
 import { AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
+import { UsersIcon } from "lucide-react";
 
 interface DiarizationAccordionProps {
   selected: string[];
@@ -16,7 +17,10 @@ const METHODS = [
 export function DiarizationAccordion({ selected, onToggle }: DiarizationAccordionProps) {
   return (
     <AccordionItem value="diarization-methods">
-      <AccordionTrigger className="px-3 text-sm">Diarization Methods</AccordionTrigger>
+      <AccordionTrigger className="px-3 text-sm">
+        <UsersIcon className="size-3.5 mr-1.5" />
+        Diarization
+      </AccordionTrigger>
       <AccordionContent className="px-3 pb-3">
         <div className="flex flex-col gap-2">
           {METHODS.map((m) => (

@@ -2,6 +2,7 @@
 
 import { AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Volume2Icon } from "lucide-react";
 
 interface DubbingMethodAccordionProps {
   selected: string[];
@@ -16,7 +17,10 @@ const METHODS = [
 export function DubbingMethodAccordion({ selected, onToggle }: DubbingMethodAccordionProps) {
   return (
     <AccordionItem value="dubbing-method">
-      <AccordionTrigger className="px-3 text-sm">Dubbing Method</AccordionTrigger>
+      <AccordionTrigger className="px-3 text-sm">
+        <Volume2Icon className="size-3.5 mr-1.5" />
+        Dubbing Methods
+      </AccordionTrigger>
       <AccordionContent className="px-3 pb-3">
         <div className="flex flex-col gap-2">
           {METHODS.map((m) => (
