@@ -12,10 +12,19 @@ export function useStudioSettings(videos: Video[]) {
 
   const selectedVideo = videos.find((v) => v.id === selectedVideoId) ?? null;
 
+  // Dubbing is multi-select (baseline + aligned = 2 configs).
+  // Diarization and voiceCloning are single-select (radio behavior).
+  const SINGLE_SELECT: Set<keyof StudioSettings> = new Set(["dubbing", "diarization", "voiceCloning"]);
+
   const toggleSetting = useCallback(
     (group: keyof StudioSettings, value: string) => {
       setSettings((prev) => {
         const current = prev[group];
+        if (SINGLE_SELECT.has(group)) {
+          // Radio: toggle off if already selected, otherwise replace
+          const next = current.includes(value) ? [] : [value];
+          return { ...prev, [group]: next };
+        }
         const next = current.includes(value)
           ? current.filter((v) => v !== value)
           : [...current, value];
