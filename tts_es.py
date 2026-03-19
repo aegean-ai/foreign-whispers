@@ -1,5 +1,4 @@
 import os
-import os as _os
 import pathlib
 import json
 import glob
@@ -18,7 +17,7 @@ XTTS_LANGUAGE = os.getenv("XTTS_LANGUAGE", "es")
 
 # Set FW_ALIGNMENT=off to use the pre-alignment baseline (legacy unclamped stretch).
 # Default is "on" (new clamped path). Useful for A/B comparisons.
-_ALIGNMENT_ENABLED = _os.getenv("FW_ALIGNMENT", "on").lower() != "off"
+_ALIGNMENT_ENABLED = os.getenv("FW_ALIGNMENT", "on").lower() != "off"
 
 SPEED_MIN = 0.85
 SPEED_MAX = 1.25
@@ -253,22 +252,22 @@ def _load_en_transcript(es_source_path: str) -> dict:
         return json.load(f)
 
 
-def _build_alignment(en_transcript: dict, es_transcript: dict) -> dict:
-    """Run global_align and return a {segment_index: AlignedSegment} map.
+def _build_alignment(en_transcript: dict, es_transcript: dict) -> tuple:
+    """Run global_align and return (metrics_list, {segment_index: AlignedSegment}).
 
-    Returns an empty dict if the alignment library is unavailable or fails.
+    Returns ([], {}) if the alignment library is unavailable or fails.
     """
     try:
         from foreign_whispers.alignment import compute_segment_metrics, global_align
     except ImportError:
-        return {}
+        return [], {}
     try:
         metrics = compute_segment_metrics(en_transcript, es_transcript)
         aligned = global_align(metrics, silence_regions=[])
-        return {seg.index: seg for seg in aligned}
+        return metrics, {seg.index: seg for seg in aligned}
     except Exception as exc:
         print(f"[tts_es] alignment failed ({exc}), proceeding without alignment")
-        return {}
+        return [], {}
 
 
 def _write_align_report(
@@ -286,7 +285,9 @@ def _write_align_report(
     try:
         from foreign_whispers.evaluation import clip_evaluation_report
         summary = clip_evaluation_report(metrics, aligned)
-    except Exception:
+    except Exception as exc:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("clip_evaluation_report failed: %s", exc)
         summary = {
             "mean_abs_duration_error_s": 0.0,
             "pct_severe_stretch": 0.0,
@@ -357,19 +358,12 @@ def text_file_to_speech(source_path, output_path, tts_engine=None):
     if offset > 0:
         print(f" (applying {offset:.1f}s speech offset)", end="")
 
-    # Pre-compute alignment (returns {index: AlignedSegment})
+    # Pre-compute alignment; also returns flat metrics list for clip_evaluation_report
     with open(source_path) as f:
         es_transcript = json.load(f)
     en_transcript = _load_en_transcript(source_path)
-    align_map = _build_alignment(en_transcript, es_transcript)
-
-    # Also keep flat lists for clip_evaluation_report
-    try:
-        from foreign_whispers.alignment import compute_segment_metrics, global_align
-        _metrics_list = compute_segment_metrics(en_transcript, es_transcript) if en_transcript else []
-        _aligned_list = list(align_map.values())
-    except Exception:
-        _metrics_list, _aligned_list = [], []
+    _metrics_list, align_map = _build_alignment(en_transcript, es_transcript)
+    _aligned_list = list(align_map.values())
 
     with tempfile.TemporaryDirectory() as tmpdir:
         combined = AudioSegment.empty()
@@ -378,13 +372,15 @@ def text_file_to_speech(source_path, output_path, tts_engine=None):
 
         for i, seg in enumerate(segments):
             start_ms = int((seg["start"] + offset) * 1000)
-            end_ms = int((seg["end"] + offset) * 1000)
             target_sec = seg["end"] - seg["start"]
 
             if start_ms > cursor_ms:
                 combined += AudioSegment.silent(duration=start_ms - cursor_ms)
                 cursor_ms = start_ms
 
+            # align_map is keyed by AlignedSegment.index which equals the enumeration
+            # index from compute_segment_metrics — safe as long as ES segments are not
+            # filtered before this call.
             aligned_seg = align_map.get(i)
             stretch_factor = aligned_seg.stretch_factor if aligned_seg else 1.0
 

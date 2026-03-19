@@ -81,13 +81,14 @@ def test_fw_alignment_off_uses_unclamped_range(tmp_path, monkeypatch):
 
     sr = 22050
     with tempfile.TemporaryDirectory() as tmpdir:
-        raw_wav = pathlib.Path(tmpdir) / "raw_segment.wav"
+        # Use a different filename from the one _synced_segment_audio writes internally
+        source_wav = pathlib.Path(tmpdir) / "source_5s.wav"
         # 5-second audio into 1-second target → speed = 5.0 → clamped to 1.25 normally
-        sf.write(str(raw_wav), np.zeros(sr * 5, dtype=np.float32), sr)
+        sf.write(str(source_wav), np.zeros(sr * 5, dtype=np.float32), sr)
 
         engine = MagicMock()
         def fake_tts(text, file_path, **kwargs):
-            import shutil; shutil.copy(raw_wav, file_path)
+            import shutil; shutil.copy(source_wav, file_path)
         engine.tts_to_file.side_effect = fake_tts
 
         result = tts_es._synced_segment_audio(engine, "test", target_sec=1.0, work_dir=tmpdir)
@@ -97,3 +98,5 @@ def test_fw_alignment_off_uses_unclamped_range(tmp_path, monkeypatch):
         # The meaningful assertion: no exception, result audio segment is not None.
         audio, sf_val, rd = result
         assert audio is not None
+        # Legacy clamp [0.1, 10]: speed=5.0 for 5s audio / 1s target — unclamped
+        assert sf_val == pytest.approx(5.0, abs=0.1)
