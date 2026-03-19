@@ -5,7 +5,7 @@ import functools
 import json
 import pathlib
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 
 from api.src.core.config import settings
@@ -190,11 +190,18 @@ async def get_original_captions(video_id: str):
 
 
 @router.post("/stitch/{video_id}")
-async def stitch_endpoint(video_id: str):
-    """Replace video audio with dubbed TTS audio (no subtitle burn-in)."""
+async def stitch_endpoint(
+    video_id: str,
+    mode: str = Query("baseline", pattern="^(baseline|aligned)$"),
+):
+    """Replace video audio with dubbed TTS audio (no subtitle burn-in).
+
+    *mode* selects which TTS audio to use (baseline or aligned).
+    Output is written to ``translated_video/<mode>/`` so both can coexist.
+    """
     raw_video_dir = settings.data_dir / "raw_video"
-    audio_dir = settings.data_dir / "translated_audio"
-    output_dir = settings.data_dir / "translated_video"
+    audio_dir = settings.data_dir / "translated_audio" / mode
+    output_dir = settings.data_dir / "translated_video" / mode
     output_dir.mkdir(parents=True, exist_ok=True)
 
     title = resolve_title(video_id)
@@ -205,7 +212,7 @@ async def stitch_endpoint(video_id: str):
 
     # Skip if already stitched
     if output_path.exists():
-        return {"video_id": video_id, "video_path": str(output_path)}
+        return {"video_id": video_id, "video_path": str(output_path), "mode": mode}
 
     video_path = str(raw_video_dir / f"{title}.mp4")
     audio_path = str(audio_dir / f"{title}.wav")
@@ -222,7 +229,7 @@ async def stitch_endpoint(video_id: str):
         ),
     )
 
-    return {"video_id": video_id, "video_path": str(output_path)}
+    return {"video_id": video_id, "video_path": str(output_path), "mode": mode}
 
 
 def _serve_video(file_path: pathlib.Path, request: Request):
@@ -268,13 +275,20 @@ def _serve_video(file_path: pathlib.Path, request: Request):
 
 
 @router.get("/video/{video_id}")
-async def get_video(video_id: str, request: Request):
+async def get_video(
+    video_id: str,
+    request: Request,
+    mode: str = Query("baseline", pattern="^(baseline|aligned)$"),
+):
     """Stream the dubbed MP4."""
     title = resolve_title(video_id)
     if title is None:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
 
-    video_path = settings.data_dir / "translated_video" / f"{title}.mp4"
+    # Check mode-specific dir first, then legacy flat dir for backwards compat
+    video_path = settings.data_dir / "translated_video" / mode / f"{title}.mp4"
+    if not video_path.exists():
+        video_path = settings.data_dir / "translated_video" / f"{title}.mp4"
     if not video_path.exists():
         raise HTTPException(status_code=404, detail="Dubbed video not yet generated")
 

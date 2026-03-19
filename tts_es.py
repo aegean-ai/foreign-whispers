@@ -170,7 +170,7 @@ def files_from_dir(dir_path) -> list:
     return es_files
 
 
-def _synced_segment_audio(tts_engine, text: str, target_sec: float, work_dir, stretch_factor: float = 1.0) -> tuple:
+def _synced_segment_audio(tts_engine, text: str, target_sec: float, work_dir, stretch_factor: float = 1.0, alignment_enabled: bool = True) -> tuple:
     """Generate TTS audio for *text* and time-stretch it to *target_sec*.
 
     Returns a tuple (AudioSegment | None, speed_factor: float, raw_duration_s: float).
@@ -208,7 +208,7 @@ def _synced_segment_audio(tts_engine, text: str, target_sec: float, work_dir, st
         return (AudioSegment.silent(duration=target_ms), 1.0, 0.0)
 
     # Compute speed factor — baseline (legacy) path uses wide clamp
-    if not _ALIGNMENT_ENABLED:
+    if not alignment_enabled:
         speed_factor = raw_duration / target_sec
         speed_factor = max(_SPEED_MIN_LEGACY, min(_SPEED_MAX_LEGACY, speed_factor))
     else:
@@ -370,7 +370,7 @@ def _compute_speech_offset(source_path: str) -> float:
     return yt_start - whisper_start
 
 
-def text_file_to_speech(source_path, output_path, tts_engine=None):
+def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=None):
     """Read translated JSON with segment timestamps and produce a time-aligned WAV.
 
     Each segment is individually synthesized and time-stretched to match its
@@ -380,8 +380,12 @@ def text_file_to_speech(source_path, output_path, tts_engine=None):
 
     *tts_engine* overrides the module-level ``tts`` instance (used by the
     FastAPI app which loads the model at startup).
+
+    *alignment* overrides the module-level ``_ALIGNMENT_ENABLED`` flag.
+    Pass True for aligned mode, False for baseline, or None to use the env var.
     """
     engine = tts_engine if tts_engine is not None else _get_tts_engine()
+    use_alignment = alignment if alignment is not None else _ALIGNMENT_ENABLED
 
     save_name = pathlib.Path(source_path).stem + ".wav"
     print(f"generating {save_name}...", end="")
@@ -404,7 +408,10 @@ def text_file_to_speech(source_path, output_path, tts_engine=None):
     with open(source_path) as f:
         es_transcript = json.load(f)
     en_transcript = _load_en_transcript(source_path)
-    _metrics_list, align_map = _build_alignment(en_transcript, es_transcript)
+    if use_alignment:
+        _metrics_list, align_map = _build_alignment(en_transcript, es_transcript)
+    else:
+        _metrics_list, align_map = [], {}
     _aligned_list = list(align_map.values())
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -439,6 +446,7 @@ def text_file_to_speech(source_path, output_path, tts_engine=None):
             seg_audio, seg_speed_factor, seg_raw_duration = _synced_segment_audio(
                 engine, seg_text, target_sec, tmpdir,
                 stretch_factor=stretch_factor,
+                alignment_enabled=use_alignment,
             )
 
             segment_details.append({

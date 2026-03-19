@@ -38,22 +38,12 @@ const INITIAL_STATE: PipelineState = {
   variants: [],
 };
 
-function makeVariantLabel(settings: StudioSettings): string {
-  const parts = [
-    ...settings.dubbing.map((d) => d.charAt(0).toUpperCase() + d.slice(1)),
-    ...settings.diarization,
-    ...settings.voiceCloning,
-  ];
-  return parts.length > 0 ? parts.join(" + ") : "Default";
+function makeVariantLabel(mode: string): string {
+  return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
-function makeVariantId(videoId: string, settings: StudioSettings): string {
-  const key = [
-    ...[...settings.dubbing].sort(),
-    ...[...settings.diarization].sort(),
-    ...[...settings.voiceCloning].sort(),
-  ].join("_");
-  return `${videoId}_${key || "default"}`;
+function makeVariantId(videoId: string, mode: string): string {
+  return `${videoId}_${mode}`;
 }
 
 type Action =
@@ -72,14 +62,18 @@ function reducer(state: PipelineState, action: Action): PipelineState {
       return INITIAL_STATE;
 
     case "START": {
-      const variantId = makeVariantId(action.videoId, action.settings);
-      const variant: VideoVariant = {
-        id: variantId,
+      const modes = action.settings.dubbing.filter(
+        (m) => m === "baseline" || m === "aligned"
+      );
+      const effectiveModes = modes.length > 0 ? modes : ["baseline"];
+      const newVariants: VideoVariant[] = effectiveModes.map((mode) => ({
+        id: makeVariantId(action.videoId, mode),
         sourceVideoId: action.videoId,
-        label: makeVariantLabel(action.settings),
+        label: makeVariantLabel(mode),
         settings: action.settings,
-        status: "processing",
-      };
+        status: "processing" as const,
+      }));
+      const newVariantIds = new Set(newVariants.map((v) => v.id));
       return {
         ...state,
         status: "running",
@@ -87,10 +81,10 @@ function reducer(state: PipelineState, action: Action): PipelineState {
         stages: initialStages(),
         selectedStage: "download",
         variants: [
-          ...state.variants.filter((v) => v.id !== variantId),
-          variant,
+          ...state.variants.filter((v) => !newVariantIds.has(v.id)),
+          ...newVariants,
         ],
-        activeVariantId: variantId,
+        activeVariantId: newVariants[0].id,
       };
     }
 
@@ -138,7 +132,9 @@ function reducer(state: PipelineState, action: Action): PipelineState {
         status: "complete",
         selectedStage: "stitch",
         variants: state.variants.map((v) =>
-          v.id === state.activeVariantId ? { ...v, status: "complete" as const } : v
+          v.sourceVideoId === state.videoId && v.status === "processing"
+            ? { ...v, status: "complete" as const }
+            : v
         ),
       };
 
@@ -198,8 +194,16 @@ export function usePipeline() {
       const dl = await run("download", () => downloadVideo(video.url));
       await run("transcribe", () => transcribeVideo(dl.video_id));
       await run("translate", () => translateVideo(dl.video_id, "es"));
-      await run("tts", () => synthesizeSpeech(dl.video_id, settings));
-      await run("stitch", () => stitchVideo(dl.video_id));
+
+      // Run TTS + stitch for each selected dubbing mode
+      const modes = settings.dubbing.filter(
+        (m): m is "baseline" | "aligned" => m === "baseline" || m === "aligned"
+      );
+      for (const mode of modes.length > 0 ? modes : ["baseline" as const]) {
+        await run("tts", () => synthesizeSpeech(dl.video_id, mode));
+        await run("stitch", () => stitchVideo(dl.video_id, mode));
+      }
+
       dispatch({ type: "PIPELINE_COMPLETE" });
     } catch {
       // Error already dispatched in run()
