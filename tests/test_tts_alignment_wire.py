@@ -6,8 +6,10 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 
-def test_synced_segment_stretch_factor_changes_speed():
+def test_synced_segment_stretch_factor_changes_speed(monkeypatch):
     """stretch_factor changes the computed speed ratio: larger factor = lower speed_factor."""
+    import tts_es
+    monkeypatch.setattr(tts_es, "_ALIGNMENT_ENABLED", True)
     from tts_es import _synced_segment_audio
     import numpy as np
     import soundfile as sf
@@ -36,10 +38,8 @@ def test_synced_segment_stretch_factor_changes_speed():
 
 def test_synced_segment_clamp_applied(monkeypatch):
     """Speed factor is clamped to [0.85, 1.25] in alignment-enabled mode."""
-    import importlib
-    monkeypatch.setenv("FW_ALIGNMENT", "on")
     import tts_es
-    importlib.reload(tts_es)
+    monkeypatch.setattr(tts_es, "_ALIGNMENT_ENABLED", True)
     from tts_es import _synced_segment_audio
     import numpy as np
     import soundfile as sf
