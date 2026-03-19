@@ -1,4 +1,4 @@
-"""POST /api/align/{video_id} and GET /api/evaluate/{video_id}."""
+"""POST /api/eval/{video_id} and GET /api/evaluate/{video_id}."""
 import json
 import pathlib
 
@@ -6,10 +6,10 @@ from fastapi import APIRouter, HTTPException
 
 from api.src.core.config import settings
 from api.src.core.dependencies import resolve_title
-from api.src.schemas.align import (
-    AlignRequest,
-    AlignResponse,
-    AlignedSegmentSchema,
+from api.src.schemas.eval import (
+    EvalRequest,
+    EvalResponse,
+    EvalSegmentSchema,
     EvaluateResponse,
 )
 from api.src.services.alignment_service import AlignmentService
@@ -26,8 +26,8 @@ def _load_transcript(directory: pathlib.Path, title: str) -> dict:
         return json.load(f)
 
 
-@router.post("/align/{video_id}", response_model=AlignResponse)
-async def align_endpoint(video_id: str, request: AlignRequest = AlignRequest()):
+@router.post("/eval/{video_id}", response_model=EvalResponse)
+async def eval_endpoint(video_id: str, request: EvalRequest = EvalRequest()):
     """Run VAD + global alignment for a dubbed video."""
     title = resolve_title(video_id)
     if title is None:
@@ -58,14 +58,14 @@ async def align_endpoint(video_id: str, request: AlignRequest = AlignRequest()):
     n_mild_stretch  = sum(1 for a in aligned if a.action.value == "mild_stretch")
     total_drift     = aligned[-1].scheduled_end - aligned[-1].original_end if aligned else 0.0
 
-    return AlignResponse(
+    return EvalResponse(
         video_id         = video_id,
         n_segments       = len(aligned),
         n_gap_shifts     = n_gap_shifts,
         n_mild_stretches = n_mild_stretch,
         total_drift_s    = round(total_drift, 3),
         aligned_segments = [
-            AlignedSegmentSchema(
+            EvalSegmentSchema(
                 index           = a.index,
                 scheduled_start = a.scheduled_start,
                 scheduled_end   = a.scheduled_end,

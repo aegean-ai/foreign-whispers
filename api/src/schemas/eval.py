@@ -1,12 +1,12 @@
-"""Pydantic schemas for the alignment API endpoints."""
+"""Pydantic schemas for the eval API endpoints."""
 from pydantic import BaseModel
 
 
-class AlignRequest(BaseModel):
+class EvalRequest(BaseModel):
     max_stretch: float = 1.4
 
 
-class AlignedSegmentSchema(BaseModel):
+class EvalSegmentSchema(BaseModel):
     index:           int
     scheduled_start: float
     scheduled_end:   float
@@ -16,13 +16,13 @@ class AlignedSegmentSchema(BaseModel):
     stretch_factor:  float
 
 
-class AlignResponse(BaseModel):
+class EvalResponse(BaseModel):
     video_id:        str
     n_segments:      int
     n_gap_shifts:    int
     n_mild_stretches: int
     total_drift_s:   float
-    aligned_segments: list[AlignedSegmentSchema]
+    aligned_segments: list[EvalSegmentSchema]
 
 
 class EvaluateResponse(BaseModel):
