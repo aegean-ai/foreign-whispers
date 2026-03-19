@@ -1,4 +1,5 @@
 import asyncio
+import logging as _logging
 import os
 import pathlib
 import json
@@ -308,7 +309,6 @@ def _shorten_segment_text(en_text: str, es_text: str, target_sec: float) -> str:
         if candidates:
             return candidates[0].text
     except Exception as exc:
-        import logging as _logging
         _logging.getLogger(__name__).warning("[tts_es] rerank failed: %s", exc)
     return es_text
 
@@ -329,7 +329,6 @@ def _write_align_report(
         from foreign_whispers.evaluation import clip_evaluation_report
         summary = clip_evaluation_report(metrics, aligned)
     except Exception as exc:
-        import logging as _logging
         _logging.getLogger(__name__).warning("clip_evaluation_report failed: %s", exc)
         summary = {
             "mean_abs_duration_error_s": 0.0,
