@@ -1,6 +1,5 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardDescription,
@@ -8,68 +7,49 @@ import {
   CardTitle,
   CardAction,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
-  DownloadIcon,
-  MicIcon,
+  ClockIcon,
+  ListIcon,
   LanguagesIcon,
-  Volume2Icon,
-  ScissorsIcon,
-  LoaderIcon,
-  CheckCircle2Icon,
-  XCircleIcon,
-  CircleDashedIcon,
+  ActivityIcon,
+  FilmIcon,
 } from "lucide-react";
-import type { PipelineStage, PipelineState } from "@/lib/types";
+import type {
+  PipelineState,
+  TranscribeResponse,
+  TranslateResponse,
+  DownloadResponse,
+  CaptionSegment,
+} from "@/lib/types";
 
-const STAGES: {
-  key: PipelineStage;
-  label: string;
-  icon: React.ElementType;
-}[] = [
-  { key: "download", label: "Download", icon: DownloadIcon },
-  { key: "transcribe", label: "Transcribe", icon: MicIcon },
-  { key: "translate", label: "Translate", icon: LanguagesIcon },
-  { key: "tts", label: "TTS", icon: Volume2Icon },
-  { key: "stitch", label: "Stitch", icon: ScissorsIcon },
-];
-
-function statusBadge(status: string) {
-  switch (status) {
-    case "active":
-      return (
-        <Badge variant="secondary" className="gap-1">
-          <LoaderIcon className="size-3 animate-spin" />
-          Running
-        </Badge>
-      );
-    case "complete":
-      return (
-        <Badge variant="default" className="gap-1">
-          <CheckCircle2Icon className="size-3" />
-          Done
-        </Badge>
-      );
-    case "error":
-      return (
-        <Badge variant="destructive" className="gap-1">
-          <XCircleIcon className="size-3" />
-          Error
-        </Badge>
-      );
-    default:
-      return (
-        <Badge variant="outline" className="gap-1">
-          <CircleDashedIcon className="size-3" />
-          Pending
-        </Badge>
-      );
-  }
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function formatDuration(ms?: number) {
-  if (!ms) return "--";
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
+function totalPipelineTime(state: PipelineState): string {
+  let total = 0;
+  for (const stage of Object.values(state.stages)) {
+    if (stage.duration_ms) total += stage.duration_ms;
+  }
+  if (total === 0) return "--";
+  if (total < 1000) return `${total}ms`;
+  return `${(total / 1000).toFixed(1)}s`;
+}
+
+function pipelineStatusBadge(status: PipelineState["status"]) {
+  switch (status) {
+    case "running":
+      return <Badge variant="secondary">Running</Badge>;
+    case "complete":
+      return <Badge variant="default">Complete</Badge>;
+    case "error":
+      return <Badge variant="destructive">Error</Badge>;
+    default:
+      return <Badge variant="outline">Idle</Badge>;
+  }
 }
 
 interface PipelineCardsProps {
@@ -77,27 +57,81 @@ interface PipelineCardsProps {
 }
 
 export function PipelineCards({ pipelineState }: PipelineCardsProps) {
+  const downloadResult = pipelineState.stages.download.result as DownloadResponse | undefined;
+  const transcribeResult = pipelineState.stages.transcribe.result as TranscribeResponse | undefined;
+  const translateResult = pipelineState.stages.translate.result as TranslateResponse | undefined;
+
+  // Segments count
+  const segmentCount = transcribeResult?.segments?.length;
+
+  // Speech duration from transcription segments
+  const speechDuration = transcribeResult?.segments?.length
+    ? transcribeResult.segments[transcribeResult.segments.length - 1].end
+    : undefined;
+
+  // Caption count from download
+  const captionCount = downloadResult?.caption_segments?.length;
+
+  // Translation word count
+  const translationWordCount = translateResult?.text
+    ? translateResult.text.split(/\s+/).filter(Boolean).length
+    : undefined;
+
+  // Variants produced
+  const variantCount = pipelineState.variants.filter(
+    (v) => v.sourceVideoId === pipelineState.videoId
+  ).length;
+
+  const metrics: {
+    label: string;
+    value: string;
+    icon: React.ElementType;
+    badge?: React.ReactNode;
+  }[] = [
+    {
+      label: "Pipeline",
+      value: totalPipelineTime(pipelineState),
+      icon: ClockIcon,
+      badge: pipelineStatusBadge(pipelineState.status),
+    },
+    {
+      label: "Segments",
+      value: segmentCount != null ? `${segmentCount}` : "--",
+      icon: ListIcon,
+    },
+    {
+      label: "Speech Duration",
+      value: speechDuration != null ? formatTime(speechDuration) : "--",
+      icon: ActivityIcon,
+    },
+    {
+      label: "Translation",
+      value: translationWordCount != null ? `${translationWordCount} words` : "--",
+      icon: LanguagesIcon,
+    },
+    {
+      label: "Variants",
+      value: variantCount > 0 ? `${variantCount}` : "--",
+      icon: FilmIcon,
+    },
+  ];
+
   return (
     <div className="grid grid-cols-2 gap-4 px-4 lg:px-6 @xl/main:grid-cols-3 @5xl/main:grid-cols-5">
-      {STAGES.map(({ key, label, icon: Icon }) => {
-        const stage = pipelineState.stages[key];
-        return (
-          <Card key={key} className="@container/card">
-            <CardHeader>
-              <CardDescription className="flex items-center gap-1.5">
-                <Icon className="size-3.5" />
-                {label}
-              </CardDescription>
-              <CardTitle className="text-lg font-semibold tabular-nums">
-                {formatDuration(stage.duration_ms)}
-              </CardTitle>
-              <CardAction>
-                {statusBadge(stage.status)}
-              </CardAction>
-            </CardHeader>
-          </Card>
-        );
-      })}
+      {metrics.map(({ label, value, icon: Icon, badge }) => (
+        <Card key={label} className="@container/card">
+          <CardHeader>
+            <CardDescription className="flex items-center gap-1.5">
+              <Icon className="size-3.5" />
+              {label}
+            </CardDescription>
+            <CardTitle className="text-lg font-semibold tabular-nums">
+              {value}
+            </CardTitle>
+            {badge && <CardAction>{badge}</CardAction>}
+          </CardHeader>
+        </Card>
+      ))}
     </div>
   );
 }
