@@ -192,16 +192,14 @@ async def get_original_captions(video_id: str):
 @router.post("/stitch/{video_id}")
 async def stitch_endpoint(
     video_id: str,
-    mode: str = Query("baseline", pattern="^(baseline|aligned)$"),
+    config: str = Query("default", pattern=r"^c-[0-9a-f]{7}$"),
 ):
-    """Replace video audio with dubbed TTS audio (no subtitle burn-in).
+    """Replace video audio with dubbed TTS audio.
 
-    *mode* selects which TTS audio to use (baseline or aligned).
-    Output is written to ``translated_video/<mode>/`` so both can coexist.
+    *config* selects which TTS audio to use (opaque directory name).
     """
     raw_video_dir = settings.data_dir / "raw_video"
-    audio_dir = settings.data_dir / "translated_audio" / mode
-    output_dir = settings.data_dir / "translated_video" / mode
+    output_dir = settings.data_dir / "translated_video" / config
     output_dir.mkdir(parents=True, exist_ok=True)
 
     title = resolve_title(video_id)
@@ -210,26 +208,28 @@ async def stitch_endpoint(
 
     output_path = output_dir / f"{title}.mp4"
 
-    # Skip if already stitched
     if output_path.exists():
-        return {"video_id": video_id, "video_path": str(output_path), "mode": mode}
+        return {"video_id": video_id, "video_path": str(output_path), "config": config}
 
     video_path = str(raw_video_dir / f"{title}.mp4")
-    audio_path = str(audio_dir / f"{title}.wav")
 
-    # Audio-only stitch in thread pool
+    # Config-specific audio dir, fall back to legacy flat dir
+    audio_path = settings.data_dir / "translated_audio" / config / f"{title}.wav"
+    if not audio_path.exists():
+        audio_path = settings.data_dir / "translated_audio" / f"{title}.wav"
+
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(
         None,
         functools.partial(
             _stitch_service.stitch_audio_only,
             video_path,
-            audio_path,
+            str(audio_path),
             str(output_path),
         ),
     )
 
-    return {"video_id": video_id, "video_path": str(output_path), "mode": mode}
+    return {"video_id": video_id, "video_path": str(output_path), "config": config}
 
 
 def _serve_video(file_path: pathlib.Path, request: Request):
@@ -278,15 +278,14 @@ def _serve_video(file_path: pathlib.Path, request: Request):
 async def get_video(
     video_id: str,
     request: Request,
-    mode: str = Query("baseline", pattern="^(baseline|aligned)$"),
+    config: str = Query("default", pattern=r"^c-[0-9a-f]{7}$"),
 ):
     """Stream the dubbed MP4."""
     title = resolve_title(video_id)
     if title is None:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
 
-    # Check mode-specific dir first, then legacy flat dir for backwards compat
-    video_path = settings.data_dir / "translated_video" / mode / f"{title}.mp4"
+    video_path = settings.data_dir / "translated_video" / config / f"{title}.mp4"
     if not video_path.exists():
         video_path = settings.data_dir / "translated_video" / f"{title}.mp4"
     if not video_path.exists():
