@@ -34,6 +34,21 @@ def test_syllable_count_accents():
     assert _count_syllables("cómo están") == 4
 
 
+def test_syllable_count_empty_string():
+    from foreign_whispers.alignment import _count_syllables
+    assert _count_syllables("") == 1  # floor prevents zero-division in predicted_tts_s
+
+
+def test_syllable_count_punctuation_only():
+    from foreign_whispers.alignment import _count_syllables
+    assert _count_syllables("...") == 1  # no vowels → floor returns 1
+
+
+def test_syllable_count_consonants_only():
+    from foreign_whispers.alignment import _count_syllables
+    assert _count_syllables("grr") == 1  # no vowels → floor returns 1
+
+
 def test_segment_metrics_predicted_tts_syllable_based():
     # "hola mundo" = 4 syllables → 4/4.5 ≈ 0.889s
     m = SegmentMetrics(
