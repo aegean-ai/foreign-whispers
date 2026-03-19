@@ -16,50 +16,76 @@ def _make_metrics(src_dur: float, tgt_chars: int) -> SegmentMetrics:
         source_end=src_dur,
         source_duration_s=src_dur,
         source_text="x" * 10,
-        translated_text="y" * tgt_chars,
+        translated_text="ba" * tgt_chars,  # tgt_chars vowel clusters → tgt_chars syllables
         src_char_count=10,
         tgt_char_count=tgt_chars,
     )
 
 
+def test_syllable_count_simple():
+    # "hola mundo" → ho-la-mun-do = 4 syllables
+    from foreign_whispers.alignment import _count_syllables
+    assert _count_syllables("hola mundo") == 4
+
+
+def test_syllable_count_accents():
+    # "cómo están" → có-mo-es-tán = 4 syllables
+    from foreign_whispers.alignment import _count_syllables
+    assert _count_syllables("cómo están") == 4
+
+
+def test_segment_metrics_predicted_tts_syllable_based():
+    # "hola mundo" = 4 syllables → 4/4.5 ≈ 0.889s
+    m = SegmentMetrics(
+        index=0, source_start=0.0, source_end=2.0, source_duration_s=2.0,
+        source_text="hello world", translated_text="hola mundo",
+        src_char_count=11, tgt_char_count=10,
+    )
+    assert m.predicted_tts_s == pytest.approx(4 / 4.5, rel=0.01)
+
+
 def test_segment_metrics_predicted_tts():
+    # "ba" * 30 → 30 syllables → 30/4.5 ≈ 6.667s
     m = _make_metrics(src_dur=3.0, tgt_chars=30)
-    assert m.predicted_tts_s == pytest.approx(2.0)   # 30 / 15
+    assert m.predicted_tts_s == pytest.approx(30 / 4.5, rel=0.01)
 
 
 def test_segment_metrics_predicted_stretch():
+    # "ba" * 30 → 30/4.5 ≈ 6.667s vs 2.0s → stretch ≈ 3.33
     m = _make_metrics(src_dur=2.0, tgt_chars=30)
-    assert m.predicted_stretch == pytest.approx(1.0)  # 2.0 / 2.0
+    assert m.predicted_stretch == pytest.approx((30 / 4.5) / 2.0, rel=0.01)
 
 
 def test_segment_metrics_overflow():
-    m = _make_metrics(src_dur=2.0, tgt_chars=60)  # 4s predicted, 2s budget
-    assert m.overflow_s == pytest.approx(2.0)
+    # "ba" * 60 → 60/4.5 ≈ 13.33s predicted, 2.0s budget → overflow ≈ 11.33s
+    m = _make_metrics(src_dur=2.0, tgt_chars=60)
+    assert m.overflow_s == pytest.approx((60 / 4.5) - 2.0, rel=0.01)
 
 
 def test_decide_action_accept():
-    assert decide_action(_make_metrics(3.0, 15)) == AlignAction.ACCEPT   # stretch ≤ 1.1
+    # stretch <= 1.1  → N/4.5 / 3.0 <= 1.1  → N <= 14.85  → tgt_chars=14
+    assert decide_action(_make_metrics(3.0, 14)) == AlignAction.ACCEPT
 
 
 def test_decide_action_mild_stretch():
-    # 20 chars / 15 = 1.33s predicted, 1.0s budget → stretch 1.33
-    assert decide_action(_make_metrics(1.0, 20)) == AlignAction.MILD_STRETCH
+    # 1.1 < s <= 1.4  → 14.85 < N <= 18.9   → tgt_chars=17
+    assert decide_action(_make_metrics(3.0, 17)) == AlignAction.MILD_STRETCH
 
 
 def test_decide_action_gap_shift():
-    # 1.0s budget, 25 chars → 1.67s predicted → stretch 1.67, needs gap
-    m = _make_metrics(1.0, 25)
-    assert decide_action(m, available_gap_s=1.0) == AlignAction.GAP_SHIFT
+    # 1.4 < s <= 1.8  → 18.9  < N <= 24.3   → tgt_chars=22 (with gap)
+    m = _make_metrics(3.0, 22)
+    assert decide_action(m, available_gap_s=2.0) == AlignAction.GAP_SHIFT
 
 
 def test_decide_action_request_shorter():
-    # 1.0s budget, 30 chars → 2.0s → stretch 2.0 → REQUEST_SHORTER
-    assert decide_action(_make_metrics(1.0, 30)) == AlignAction.REQUEST_SHORTER
+    # 1.8 < s <= 2.5  → 24.3  < N <= 33.75  → tgt_chars=27
+    assert decide_action(_make_metrics(3.0, 27)) == AlignAction.REQUEST_SHORTER
 
 
 def test_decide_action_fail():
-    # 1.0s budget, 40 chars → 2.67s → stretch 2.67 → FAIL
-    assert decide_action(_make_metrics(1.0, 40)) == AlignAction.FAIL
+    # s > 2.5  → N > 33.75  → tgt_chars=35
+    assert decide_action(_make_metrics(3.0, 35)) == AlignAction.FAIL
 
 
 def test_compute_segment_metrics_length():
@@ -100,8 +126,8 @@ def test_global_align_gap_shift_accumulates_drift():
         {"start": 2.0, "end": 4.0, "text": "x"},
     ]}
     es = {"segments": [
-        {"start": 0.0, "end": 1.0, "text": "y" * 25},
-        {"start": 2.0, "end": 4.0, "text": "y" * 10},
+        {"start": 0.0, "end": 1.0, "text": "ba" * 7},   # 7 syl/4.5 ≈ 1.56s in 1.0s → stretch 1.56 → GAP_SHIFT
+        {"start": 2.0, "end": 4.0, "text": "ba" * 4},   # 4 syl/4.5 ≈ 0.89s in 2.0s → ACCEPT
     ]}
     silence = [{"start_s": 1.0, "end_s": 3.0, "label": "silence"}]
     metrics = compute_segment_metrics(en, es)

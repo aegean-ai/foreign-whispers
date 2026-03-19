@@ -4,14 +4,29 @@ Extracted from notebooks/foreign_whispers_pipeline.ipynb (milestones M3-align,
 M4-align, M6-align).  No external dependencies — stdlib only.
 """
 import dataclasses
+import re
+import unicodedata
 from enum import Enum
+
+
+def _count_syllables(text: str) -> int:
+    """Count Spanish syllables via vowel-cluster counting.
+
+    Strips accents then counts contiguous vowel runs. Each run = one syllable.
+    Returns at least 1 for any non-empty text so the rate never divides by zero.
+    """
+    # Normalise: decompose accented chars, keep only ASCII letters + spaces
+    nfkd = unicodedata.normalize("NFKD", text.lower())
+    ascii_text = "".join(c for c in nfkd if not unicodedata.combining(c))
+    clusters = re.findall(r"[aeiou]+", ascii_text)
+    return max(1, len(clusters))
 
 
 @dataclasses.dataclass
 class SegmentMetrics:
     """Timing measurements for one transcript segment.
 
-    Predicted TTS duration uses the heuristic: ~15 chars/second for Spanish.
+    Predicted TTS duration uses the heuristic: ~4.5 syllables/second for Spanish.
     """
     index:             int
     source_start:      float
@@ -26,7 +41,8 @@ class SegmentMetrics:
     overflow_s:        float = dataclasses.field(init=False)
 
     def __post_init__(self) -> None:
-        self.predicted_tts_s = self.tgt_char_count / 15.0
+        syllables = _count_syllables(self.translated_text)
+        self.predicted_tts_s = syllables / 4.5
         self.predicted_stretch = (
             self.predicted_tts_s / self.source_duration_s
             if self.source_duration_s > 0 else 1.0
