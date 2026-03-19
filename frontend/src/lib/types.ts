@@ -63,6 +63,8 @@ export interface PipelineState {
   stages: Record<PipelineStage, StageState>;
   selectedStage: PipelineStage;
   videoId?: string;
+  variants: VideoVariant[];
+  activeVariantId?: string;
 }
 
 export interface StudioSettings {

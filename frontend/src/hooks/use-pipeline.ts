@@ -5,7 +5,9 @@ import type {
   PipelineStage,
   PipelineState,
   StageState,
+  StudioSettings,
   Video,
+  VideoVariant,
 } from "@/lib/types";
 import {
   downloadVideo,
@@ -33,15 +35,35 @@ const INITIAL_STATE: PipelineState = {
   status: "idle",
   stages: initialStages(),
   selectedStage: "download",
+  variants: [],
 };
 
+function makeVariantLabel(settings: StudioSettings): string {
+  const parts = [
+    ...settings.dubbing.map((d) => d.charAt(0).toUpperCase() + d.slice(1)),
+    ...settings.diarization,
+    ...settings.voiceCloning,
+  ];
+  return parts.length > 0 ? parts.join(" + ") : "Default";
+}
+
+function makeVariantId(videoId: string, settings: StudioSettings): string {
+  const key = [
+    ...[...settings.dubbing].sort(),
+    ...[...settings.diarization].sort(),
+    ...[...settings.voiceCloning].sort(),
+  ].join("_");
+  return `${videoId}_${key || "default"}`;
+}
+
 type Action =
-  | { type: "START"; videoId: string }
+  | { type: "START"; videoId: string; settings: StudioSettings }
   | { type: "STAGE_ACTIVE"; stage: PipelineStage }
   | { type: "STAGE_COMPLETE"; stage: PipelineStage; result: unknown; duration_ms: number }
   | { type: "STAGE_ERROR"; stage: PipelineStage; error: string }
   | { type: "SELECT_STAGE"; stage: PipelineStage }
   | { type: "PIPELINE_COMPLETE" }
+  | { type: "SELECT_VARIANT"; variantId: string }
   | { type: "RESET" };
 
 function reducer(state: PipelineState, action: Action): PipelineState {
@@ -49,14 +71,28 @@ function reducer(state: PipelineState, action: Action): PipelineState {
     case "RESET":
       return INITIAL_STATE;
 
-    case "START":
+    case "START": {
+      const variantId = makeVariantId(action.videoId, action.settings);
+      const variant: VideoVariant = {
+        id: variantId,
+        sourceVideoId: action.videoId,
+        label: makeVariantLabel(action.settings),
+        settings: action.settings,
+        status: "processing",
+      };
       return {
         ...state,
         status: "running",
         videoId: action.videoId,
         stages: initialStages(),
         selectedStage: "download",
+        variants: [
+          ...state.variants.filter((v) => v.id !== variantId),
+          variant,
+        ],
+        activeVariantId: variantId,
       };
+    }
 
     case "STAGE_ACTIVE":
       return {
@@ -91,13 +127,26 @@ function reducer(state: PipelineState, action: Action): PipelineState {
           [action.stage]: { status: "error", error: action.error },
         },
         selectedStage: action.stage,
+        variants: state.variants.map((v) =>
+          v.id === state.activeVariantId ? { ...v, status: "error" as const } : v
+        ),
       };
 
     case "PIPELINE_COMPLETE":
-      return { ...state, status: "complete", selectedStage: "stitch" };
+      return {
+        ...state,
+        status: "complete",
+        selectedStage: "stitch",
+        variants: state.variants.map((v) =>
+          v.id === state.activeVariantId ? { ...v, status: "complete" as const } : v
+        ),
+      };
 
     case "SELECT_STAGE":
       return { ...state, selectedStage: action.stage };
+
+    case "SELECT_VARIANT":
+      return { ...state, activeVariantId: action.variantId };
 
     default:
       return state;
@@ -112,8 +161,13 @@ export function usePipeline() {
     []
   );
 
-  const runPipeline = useCallback(async (video: Video) => {
-    dispatch({ type: "START", videoId: video.id });
+  const selectVariant = useCallback(
+    (variantId: string) => dispatch({ type: "SELECT_VARIANT", variantId }),
+    []
+  );
+
+  const runPipeline = useCallback(async (video: Video, settings: StudioSettings) => {
+    dispatch({ type: "START", videoId: video.id, settings });
 
     const run = async <T,>(
       stage: PipelineStage,
@@ -144,7 +198,7 @@ export function usePipeline() {
       const dl = await run("download", () => downloadVideo(video.url));
       await run("transcribe", () => transcribeVideo(dl.video_id));
       await run("translate", () => translateVideo(dl.video_id, "es"));
-      await run("tts", () => synthesizeSpeech(dl.video_id));
+      await run("tts", () => synthesizeSpeech(dl.video_id, settings));
       await run("stitch", () => stitchVideo(dl.video_id));
       dispatch({ type: "PIPELINE_COMPLETE" });
     } catch {
@@ -154,5 +208,5 @@ export function usePipeline() {
 
   const reset = useCallback(() => dispatch({ type: "RESET" }), []);
 
-  return { state, runPipeline, selectStage, reset };
+  return { state, runPipeline, selectStage, selectVariant, reset };
 }
