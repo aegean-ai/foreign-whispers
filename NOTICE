@@ -1,0 +1,36 @@
+Foreign Whispers
+Copyright (c) 2026 Pantelis Monogioudis
+
+This software is source-available under the AGPL-3.0-only license with
+a Commons Clause restriction. This summary is provided for convenience
+only. The LICENSE file is the authoritative legal text.
+
+PERMITTED:
+  - Research and academic use at any institution
+  - Internal use by any organization
+  - Modification and redistribution under AGPL-3.0 terms
+  - Consulting where the software is not the primary deliverable
+
+NOT PERMITTED (without a separate commercial license):
+  - Selling the software or a service substantially derived from it
+
+THIRD-PARTY DEPENDENCIES AND THEIR LICENSES:
+
+| Component               | License        | Notes                                    |
+|-------------------------|----------------|------------------------------------------|
+| pyrubberband/Rubber Band| GPLv2+         | "or later" — used under GPLv3 terms      |
+| Coqui TTS toolkit       | MPL-2.0        | Compatible per MPL-2.0 Section 3         |
+| OpenAI Whisper           | MIT            |                                          |
+| argostranslate          | MIT/CC0        |                                          |
+| yt-dlp                  | Unlicense      |                                          |
+| FastAPI                 | MIT            |                                          |
+| pydantic                | MIT            |                                          |
+| moviepy                 | MIT            |                                          |
+| PyTorch                 | BSD-3-Clause   |                                          |
+| silero-vad              | MIT            | Optional                                 |
+| pyannote.audio          | MIT            | Optional                                 |
+
+XTTS-v2 model weights are NOT bundled with this software. They are
+fetched at runtime by the TTS container and are licensed separately
+under the Coqui Public Model License (CPML), which restricts use to
+non-commercial purposes.

@@ -2,6 +2,7 @@
 name = "foreign-whispers"
 version = "0.1.0"
 description = "Foreign Whispers: YouTube video dubbing pipeline (download, transcribe, translate, TTS, video stitching)"
+license = { text = "LicenseRef-AGPL-3.0-only-with-Commons-Clause" }
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "torch>=2.0",
