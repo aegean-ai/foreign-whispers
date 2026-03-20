@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
     # File paths
     base_dir: Path = Path(__file__).resolve().parent.parent.parent.parent
-    data_dir: Path = base_dir / "pipeline_data"
+    data_dir: Path = base_dir / "pipeline_data" / "api"
     # Legacy alias — kept for backwards compatibility with volume mounts
     ui_dir: Path = data_dir
 

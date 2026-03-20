@@ -25,7 +25,7 @@ async def _run_in_threadpool(executor, fn, *args, **kwargs):
 async def tts_endpoint(
     video_id: str,
     request: Request,
-    config: str = Query("default", pattern=r"^c-[0-9a-f]{7}$"),
+    config: str = Query("default", pattern=r"^(default|c-[0-9a-f]{7})$"),
     alignment: bool = Query(False),
 ):
     """Generate TTS audio for a translated transcript.
@@ -71,7 +71,7 @@ async def tts_endpoint(
 @router.get("/audio/{video_id}")
 async def get_audio(
     video_id: str,
-    config: str = Query("default", pattern=r"^c-[0-9a-f]{7}$"),
+    config: str = Query("default", pattern=r"^(default|c-[0-9a-f]{7})$"),
 ):
     """Stream the TTS-synthesized WAV audio."""
     title = resolve_title(video_id)

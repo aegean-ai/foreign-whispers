@@ -192,7 +192,7 @@ async def get_original_captions(video_id: str):
 @router.post("/stitch/{video_id}")
 async def stitch_endpoint(
     video_id: str,
-    config: str = Query("default", pattern=r"^c-[0-9a-f]{7}$"),
+    config: str = Query("default", pattern=r"^(default|c-[0-9a-f]{7})$"),
 ):
     """Replace video audio with dubbed TTS audio.
 
@@ -278,7 +278,7 @@ def _serve_video(file_path: pathlib.Path, request: Request):
 async def get_video(
     video_id: str,
     request: Request,
-    config: str = Query("default", pattern=r"^c-[0-9a-f]{7}$"),
+    config: str = Query("default", pattern=r"^(default|c-[0-9a-f]{7})$"),
 ):
     """Stream the dubbed MP4."""
     title = resolve_title(video_id)

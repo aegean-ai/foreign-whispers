@@ -25,6 +25,7 @@ dependencies = [
     "requests",
     "setuptools<81",
     "pyyaml>=6.0.3",
+    "logfire",
 ]
 
 [dependency-groups]
