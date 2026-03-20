@@ -65,6 +65,7 @@ services:
       dockerfile: Dockerfile
       target: gpu
     restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
     network_mode: host
     command: ["uv", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8080"]
     environment:
@@ -75,6 +76,8 @@ services:
       # - FW_USE_GPU_ENCODE=1
     volumes:
       - ./pipeline_data:/app/pipeline_data
+      - ./foreign_whispers:/app/foreign_whispers
+      - ./api:/app/api
       - ./cookies.txt:/app/cookies.txt
     deploy:
       resources:
@@ -93,6 +96,7 @@ services:
       dockerfile: Dockerfile
       target: cpu
     restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
     network_mode: host
     command: ["uv", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8080"]
     environment:
@@ -100,6 +104,8 @@ services:
       - FW_TTS_MODEL_NAME=tts_models/es/css10/vits
     volumes:
       - ./pipeline_data:/app/pipeline_data
+      - ./foreign_whispers:/app/foreign_whispers
+      - ./api:/app/api
       - ./cookies.txt:/app/cookies.txt
 
   # ── API — Apple Silicon profile ────────────────────────────────────
@@ -111,6 +117,7 @@ services:
       dockerfile: Dockerfile
       target: cpu
     restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
     network_mode: host
     command: ["uv", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8080"]
     environment:
@@ -119,6 +126,8 @@ services:
       - PYTORCH_ENABLE_MPS_FALLBACK=1
     volumes:
       - ./pipeline_data:/app/pipeline_data
+      - ./foreign_whispers:/app/foreign_whispers
+      - ./api:/app/api
       - ./cookies.txt:/app/cookies.txt
 
   # ── Frontend (Next.js) — all profiles ──────────────────────────────

@@ -138,22 +138,16 @@ def test_text_file_to_speech_missing_en_transcript(tmp_path):
     assert (out_dir / f"{title}.wav").exists()
 
 
-def test_shorten_segment_text_fallback_without_key():
-    """_shorten_segment_text returns original ES text when ANTHROPIC_API_KEY absent."""
+def test_shorten_segment_text_returns_original_when_stub():
+    """_shorten_segment_text returns original ES text when stub returns []."""
     from tts_es import _shorten_segment_text
-    import os
 
-    env_backup = os.environ.pop("ANTHROPIC_API_KEY", None)
-    try:
-        result = _shorten_segment_text(
-            en_text="This is a long sentence.",
-            es_text="Esta es una frase muy larga.",
-            target_sec=2.0,
-        )
-        assert result == "Esta es una frase muy larga."
-    finally:
-        if env_backup:
-            os.environ["ANTHROPIC_API_KEY"] = env_backup
+    result = _shorten_segment_text(
+        en_text="This is a long sentence.",
+        es_text="Esta es una frase muy larga.",
+        target_sec=2.0,
+    )
+    assert result == "Esta es una frase muy larga."
 
 
 def test_text_file_to_speech_calls_shorten_for_request_shorter(tmp_path):
@@ -201,20 +195,9 @@ def test_text_file_to_speech_calls_shorten_for_request_shorter(tmp_path):
     assert shorten_calls[0][1] == es_seg["text"]
 
 
-def test_shorten_segment_text_fallback_no_pydanticai(monkeypatch):
-    """_shorten_segment_text returns original text when pydantic-ai is not installed."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    with patch("foreign_whispers.agents.PYDANTICAI_AVAILABLE", False):
-        from tts_es import _shorten_segment_text
-        result = _shorten_segment_text("source", "target", 2.0)
-        assert result == "target"
-
-
-def test_shorten_segment_text_fallback_on_agent_exception(monkeypatch):
-    """_shorten_segment_text returns original text when the agent raises."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    with patch("foreign_whispers.agents.PYDANTICAI_AVAILABLE", True), \
-         patch("foreign_whispers.agents.get_shorter_translations", side_effect=RuntimeError("boom")):
+def test_shorten_segment_text_fallback_on_exception():
+    """_shorten_segment_text returns original text when reranking raises."""
+    with patch("foreign_whispers.reranking.get_shorter_translations", side_effect=RuntimeError("boom")):
         from tts_es import _shorten_segment_text
         result = _shorten_segment_text("source", "target", 2.0)
         assert result == "target"

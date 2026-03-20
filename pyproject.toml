@@ -34,7 +34,6 @@ dev = [
     "httpx",
 ]
 alignment = [
-    "pydantic-ai",
     "logfire",
     "silero-vad",
     "pyannote.audio",
@@ -65,7 +64,6 @@ pythonpath = ["."]
 markers = [
     "requires_silero: needs silero-vad and torch installed",
     "requires_pyannote: needs pyannote.audio installed and FW_HF_TOKEN set",
-    "requires_pydanticai: needs pydantic-ai installed and ANTHROPIC_API_KEY set",
 ]
 
 [build-system]

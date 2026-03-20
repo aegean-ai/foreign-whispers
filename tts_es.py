@@ -294,39 +294,18 @@ def _build_alignment(en_transcript: dict, es_transcript: dict) -> tuple:
 
 
 def _shorten_segment_text(en_text: str, es_text: str, target_sec: float) -> str:
-    """Ask the PydanticAI agent for a shorter Spanish translation fitting target_sec.
+    """Try to shorten a Spanish translation to fit *target_sec*.
 
-    Calls get_shorter_translations with:
-      source_text=en_text, baseline_es=es_text, target_duration_s=target_sec
-
-    Falls back to es_text if:
-    - ANTHROPIC_API_KEY is not set
-    - pydantic-ai is not installed
-    - the agent call fails for any reason
+    Delegates to ``get_shorter_translations()`` (student assignment stub).
+    Returns the original *es_text* if no shorter candidate is available.
     """
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        return es_text
-
     try:
-        from foreign_whispers.agents import get_shorter_translations, PYDANTICAI_AVAILABLE
-        if not PYDANTICAI_AVAILABLE:
-            return es_text
-
-        # asyncio.run() raises RuntimeError if called from inside a running event loop
-        # (e.g. FastAPI run_in_executor thread).  Create a fresh event loop in the
-        # current worker thread instead — always safe from a thread pool worker.
-        loop = asyncio.new_event_loop()
-        try:
-            candidates = loop.run_until_complete(
-                get_shorter_translations(
-                    source_text=en_text,
-                    baseline_es=es_text,
-                    target_duration_s=target_sec,
-                )
-            )
-        finally:
-            loop.close()
-
+        from foreign_whispers.reranking import get_shorter_translations
+        candidates = get_shorter_translations(
+            source_text=en_text,
+            baseline_es=es_text,
+            target_duration_s=target_sec,
+        )
         if candidates:
             return candidates[0].text
     except Exception as exc:

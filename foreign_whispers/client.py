@@ -67,7 +67,7 @@ class FWClient:
         return self._post(f"/api/transcribe/{video_id}")
 
     def translate(self, video_id: str, target_language: str = "es") -> dict:
-        """Translate transcript EN → target language.
+        """Translate transcript from source language to target language.
 
         Returns ``{video_id, target_language, text, segments}``.
         """

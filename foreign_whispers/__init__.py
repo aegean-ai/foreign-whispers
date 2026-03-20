@@ -4,8 +4,8 @@ Public API — import anything from here:
 
     from foreign_whispers import SegmentMetrics, global_align, clip_evaluation_report
 """
-from foreign_whispers.agents import FailureAnalysis, TranslationCandidate  # noqa: F401
-from foreign_whispers.agents import analyze_failures, get_shorter_translations  # noqa: F401
+from foreign_whispers.reranking import FailureAnalysis, TranslationCandidate  # noqa: F401
+from foreign_whispers.reranking import analyze_failures, get_shorter_translations  # noqa: F401
 from foreign_whispers.alignment import (  # noqa: F401
     AlignAction,
     AlignedSegment,

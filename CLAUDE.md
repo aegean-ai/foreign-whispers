@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-**Foreign Whispers** — a pipeline that accepts YouTube videos and outputs the video with spoken and written subtitles in Spanish. The pipeline covers:
+**Foreign Whispers** — a pipeline that accepts YouTube videos and outputs the video with spoken and written subtitles in a target language. The pipeline covers:
 
 1. Download video + closed captions from YouTube
 2. Speech-to-text via Whisper
-3. English → Spanish translation (offline, via `argostranslate`)
+3. Source → target language translation (offline, via `argostranslate`)
 4. Translated text → speech via open-source TTS (XTTS v2)
 5. Next.js frontend + FastAPI backend
 
@@ -27,7 +27,7 @@ foreign-whispers/
 │   ├── backends.py              # DurationAwareTTSBackend ABC
 │   ├── vad.py                   # Silero VAD wrapper
 │   ├── diarization.py           # pyannote.audio wrapper
-│   ├── agents.py                # PydanticAI agents (lazy instantiation)
+│   ├── reranking.py             # Failure analysis + translation re-ranking stub
 │   └── evaluation.py           # clip_evaluation_report()
 ├── frontend/                    # Next.js UI (port 8501 in Docker)
 ├── video_registry.yml           # Single source of truth for pipeline videos
@@ -84,9 +84,8 @@ YouTube URL → yt-dlp download → Whisper STT → argostranslate → XTTS TTS 
 ### Key design decisions
 
 - `video_registry.yml` drives the video list; no database.
-- `foreign_whispers` library handles temporal alignment between English segments and Spanish TTS audio.
-- Optional heavy deps (`silero-vad`, `pyannote.audio`, `pydantic-ai`, `logfire`) degrade gracefully when absent.
-- PydanticAI agents use **lazy instantiation** (inside functions, not module-level) to avoid import-time failure when `ANTHROPIC_API_KEY` is absent.
+- `foreign_whispers` library handles temporal alignment between source-language segments and target-language TTS audio.
+- Optional heavy deps (`silero-vad`, `pyannote.audio`, `logfire`) degrade gracefully when absent.
 
 ## Open Issues
 

@@ -1,33 +1,34 @@
-# tests/test_agents.py
-import asyncio
-import pytest
-from foreign_whispers.agents import get_shorter_translations, analyze_failures, PYDANTICAI_AVAILABLE
+# tests/test_agents.py — renamed module is now foreign_whispers.reranking
+from foreign_whispers.reranking import (
+    get_shorter_translations,
+    analyze_failures,
+    TranslationCandidate,
+    FailureAnalysis,
+)
 
 
-def test_get_shorter_returns_empty_without_pydanticai(monkeypatch):
-    """When pydantic-ai is absent get_shorter_translations returns []."""
-    import foreign_whispers.agents as ag
-    monkeypatch.setattr(ag, "PYDANTICAI_AVAILABLE", False)
-    result = asyncio.run(get_shorter_translations("hello", "hola", 1.0))
+def test_get_shorter_returns_empty_stub():
+    """Stub returns [] until students implement it."""
+    result = get_shorter_translations("hello", "hola", 1.0)
     assert result == []
 
 
-def test_analyze_failures_returns_none_without_pydanticai(monkeypatch):
-    import foreign_whispers.agents as ag
-    monkeypatch.setattr(ag, "PYDANTICAI_AVAILABLE", False)
-    result = asyncio.run(analyze_failures({"mean_abs_duration_error_s": 0.5}))
-    assert result is None
+def test_analyze_failures_returns_dataclass():
+    result = analyze_failures({"mean_abs_duration_error_s": 0.5})
+    assert isinstance(result, FailureAnalysis)
+    assert result.failure_category == "ok"
 
 
-@pytest.mark.requires_pydanticai
-def test_get_shorter_returns_candidates():
-    """Integration test — requires pydantic-ai and ANTHROPIC_API_KEY."""
-    candidates = asyncio.run(get_shorter_translations(
-        source_text="This is a very long sentence that needs to be shortened.",
-        baseline_es="Esta es una oracion muy larga que necesita ser acortada.",
-        target_duration_s=1.5,
-    ))
-    assert len(candidates) > 0
-    for c in candidates:
-        assert hasattr(c, "text")
-        assert hasattr(c, "char_count")
+def test_analyze_failures_detects_overflow():
+    result = analyze_failures({"pct_severe_stretch": 30})
+    assert result.failure_category == "duration_overflow"
+
+
+def test_analyze_failures_detects_drift():
+    result = analyze_failures({"total_cumulative_drift_s": 5.0})
+    assert result.failure_category == "cumulative_drift"
+
+
+def test_analyze_failures_detects_stretch_quality():
+    result = analyze_failures({"mean_abs_duration_error_s": 1.2})
+    assert result.failure_category == "stretch_quality"

@@ -47,7 +47,7 @@ class TranslationService:
         result["language"] = to_code
         return result
 
-    async def rerank_for_duration(
+    def rerank_for_duration(
         self,
         en_transcript: dict,
         es_transcript: dict,
@@ -57,14 +57,17 @@ class TranslationService:
         """Re-rank translated segments that exceed their duration budget.
 
         For each segment where decide_action() returns REQUEST_SHORTER, calls
-        the PydanticAI translation agent to produce shorter alternatives and
-        picks the best fit.  Returns a deep copy of es_transcript; original
-        is never mutated.  If pydantic-ai is not installed, returns es_transcript
-        unchanged.
+        get_shorter_translations() to produce shorter alternatives and picks
+        the best fit.  Returns a deep copy of es_transcript; original is never
+        mutated.
+
+        Note: get_shorter_translations() is a student assignment stub that
+        currently returns an empty list — so this method is a no-op until
+        the stub is implemented.
         """
         import copy
         from foreign_whispers.alignment import AlignAction, compute_segment_metrics, decide_action
-        from foreign_whispers.agents import get_shorter_translations
+        from foreign_whispers.reranking import get_shorter_translations
 
         result = copy.deepcopy(es_transcript)
         metrics = compute_segment_metrics(en_transcript, es_transcript)
@@ -76,7 +79,7 @@ class TranslationService:
             prev = segs[m.index - 1]["text"] if m.index > 0 else ""
             nxt  = segs[m.index + 1]["text"] if m.index < len(segs) - 1 else ""
 
-            candidates = await get_shorter_translations(
+            candidates = get_shorter_translations(
                 source_text       = m.source_text,
                 baseline_es       = m.translated_text,
                 target_duration_s = m.source_duration_s,

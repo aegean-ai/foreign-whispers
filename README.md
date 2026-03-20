@@ -2,7 +2,7 @@
 
 [![License: AGPL-3.0 + Commons Clause](https://img.shields.io/badge/License-Source_Available-blue.svg)](./LICENSE)
 
-YouTube video dubbing pipeline — transcribe, translate, and dub 60 Minutes interviews into Spanish.
+YouTube video dubbing pipeline — transcribe, translate, and dub 60 Minutes interviews into a target language.
 
 ## Architecture
 
@@ -67,7 +67,7 @@ Open **http://localhost:8501** in your browser.
 |-------|-------------|--------|
 | **Download** | Fetch video + captions from YouTube via yt-dlp | `pipeline_data/raw_video/`, `raw_caption/` |
 | **Transcribe** | Speech-to-text via Whisper | `pipeline_data/raw_transcription/` |
-| **Translate** | English to Spanish via argostranslate (offline, OpenNMT) | `pipeline_data/translated_transcription/` |
+| **Translate** | Source → target language via argostranslate (offline, OpenNMT) | `pipeline_data/translated_transcription/` |
 | **Synthesize Speech** | TTS via XTTS v2 (GPU) or Coqui (CPU fallback), time-aligned to original segments | `pipeline_data/translated_audio/` |
 | **Render Dubbed Video** | Replace audio track via ffmpeg remux (no re-encoding) | `pipeline_data/translated_video/` |
 
@@ -116,7 +116,7 @@ foreign-whispers/
 |--------|----------|-------------|
 | POST | `/api/download` | Download YouTube video + captions |
 | POST | `/api/transcribe/{id}` | Whisper speech-to-text |
-| POST | `/api/translate/{id}` | English to Spanish translation |
+| POST | `/api/translate/{id}` | Source → target language translation |
 | POST | `/api/tts/{id}` | Time-aligned TTS synthesis |
 | POST | `/api/stitch/{id}` | Audio remux (ffmpeg -c:v copy) |
 | GET | `/api/video/{id}` | Stream dubbed video (range requests) |
@@ -128,17 +128,113 @@ foreign-whispers/
 
 ## Development
 
-```bash
-# Local development (without Docker)
-uv sync
-uvicorn api.src.main:app --reload --port 8080
+### Container architecture
 
-# Frontend
+```
+Host machine
+├── foreign_whispers/      ← bind-mounted into API container
+├── api/                   ← bind-mounted into API container
+├── pipeline_data/api/     ← bind-mounted into API container
+│
+└── Docker Compose
+    ├── foreign-whispers-stt   (GPU)  :8000  — Whisper inference
+    ├── foreign-whispers-tts   (GPU)  :8020  — XTTS v2 inference
+    ├── foreign-whispers-api   (CPU)  :8080  — FastAPI orchestrator
+    └── foreign-whispers-frontend      :8501  — Next.js UI
+```
+
+The API container is CPU-only — it delegates all GPU work to the STT and TTS
+containers via HTTP. The `foreign_whispers/` library and `api/` source are
+**bind-mounted** from the host, so edits on the host are immediately visible
+inside the container.
+
+### Editing and debugging the library
+
+1. **Start all services:**
+
+   ```bash
+   docker compose --profile nvidia up -d
+   ```
+
+2. **Edit any file** in `foreign_whispers/` or `api/` on the host (e.g. in VS Code).
+
+3. **Restart the API container** to pick up changes:
+
+   ```bash
+   docker compose --profile nvidia restart api-gpu
+   ```
+
+   To avoid manual restarts, add `--reload` to the uvicorn command in
+   `docker-compose.yml`:
+
+   ```yaml
+   command: ["uv", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+   ```
+
+   With `--reload`, uvicorn watches for file changes and restarts automatically.
+
+4. **Test via the SDK** from a notebook or Python REPL on the host:
+
+   ```python
+   from foreign_whispers import FWClient
+   fw = FWClient()             # connects to http://localhost:8080
+   fw.transcribe("GYQ5yGV_-Oc")
+   ```
+
+5. **Test the library directly** (no Docker needed for pure-Python alignment work):
+
+   ```python
+   from foreign_whispers import global_align, compute_segment_metrics, clip_evaluation_report
+   ```
+
+   This is the two-phase workflow:
+   - **Phase 1 (SDK):** Call `FWClient` methods to drive the pipeline through Docker (download, transcribe, translate, TTS, stitch). Data lands in `pipeline_data/api/`.
+   - **Phase 2 (library):** Import `foreign_whispers` directly to iterate on alignment algorithms using data produced in Phase 1. No GPU or Docker needed.
+
+### Local setup (no Docker)
+
+```bash
+uv sync                    # install all dependencies
+uv run python -c "from foreign_whispers import FWClient; print('ok')"
+```
+
+For Jupyter/VS Code notebooks, register the kernel once:
+
+```bash
+uv pip install ipykernel
+uv run python -m ipykernel install --user --name foreign-whispers
+```
+
+Then select the **foreign-whispers** kernel in VS Code's kernel picker.
+
+### When to rebuild
+
+| Change | Action needed |
+|--------|--------------|
+| Edit `foreign_whispers/*.py` or `api/**/*.py` | Restart API container (or use `--reload`) |
+| Edit `pyproject.toml` / add dependencies | `docker compose --profile nvidia build api-gpu && docker compose --profile nvidia up -d api-gpu` |
+| Edit `frontend/` | Frontend has its own hot-reload; no action needed |
+| Edit `docker-compose.yml` | `docker compose --profile nvidia up -d` (re-creates changed services) |
+
+### File ownership
+
+The API container runs as your host UID/GID (set in `.env`), so all files it
+creates in `pipeline_data/` are owned by you — not root. If you see permission
+errors on existing files, they were created by an older root-mode container:
+
+```bash
+sudo chown -R $(id -u):$(id -g) pipeline_data/
+```
+
+### Frontend
+
+```bash
 cd frontend && pnpm install && pnpm dev
 ```
 
-Requirements:
+### Requirements
+
 - Python 3.11
 - ffmpeg (system-wide)
 - deno (for yt-dlp YouTube extraction)
-- GPU recommended for Whisper + XTTS inference
+- NVIDIA GPU recommended for Whisper + XTTS inference

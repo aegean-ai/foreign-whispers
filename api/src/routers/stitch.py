@@ -95,7 +95,7 @@ def _compute_speech_offset(title: str) -> float:
 
 @router.get("/captions/{video_id}")
 async def get_captions(video_id: str):
-    """Serve translated (Spanish) captions as WebVTT.
+    """Serve translated (target-language) captions as WebVTT.
 
     Applies the YouTube caption timing offset so subtitles start when speech begins.
     """
@@ -158,7 +158,7 @@ def _youtube_captions_to_vtt(caption_path: pathlib.Path) -> str:
 
 @router.get("/captions/{video_id}/original")
 async def get_original_captions(video_id: str):
-    """Serve original (English) captions as WebVTT.
+    """Serve original (source-language) captions as WebVTT.
 
     Prefers: existing VTT on disk > YouTube captions (accurate timestamps) > Whisper transcription.
     """
