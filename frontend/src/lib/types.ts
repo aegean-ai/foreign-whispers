@@ -29,6 +29,7 @@ export interface TranscribeResponse {
   language: string;
   text: string;
   segments: TranscribeSegment[];
+  skipped: boolean;
 }
 
 export interface TranslateResponse {
@@ -49,7 +50,7 @@ export interface StitchResponse {
 }
 
 export type PipelineStage = "download" | "transcribe" | "translate" | "tts" | "stitch";
-export type StageStatus = "pending" | "active" | "complete" | "error";
+export type StageStatus = "pending" | "active" | "complete" | "skipped" | "error";
 
 export interface StageState {
   status: StageStatus;
@@ -72,6 +73,7 @@ export interface StudioSettings {
   dubbing: string[];
   diarization: string[];
   voiceCloning: string[];
+  useYoutubeCaptions: boolean;
 }
 
 export interface VideoVariant {
@@ -87,4 +89,5 @@ export const DEFAULT_STUDIO_SETTINGS: StudioSettings = {
   dubbing: ["baseline"],
   diarization: [],
   voiceCloning: [],
+  useYoutubeCaptions: true,
 };

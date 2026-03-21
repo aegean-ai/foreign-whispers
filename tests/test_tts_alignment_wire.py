@@ -1,4 +1,4 @@
-"""Tests for alignment wiring in tts_es.py."""
+"""Tests for alignment wiring in tts.py."""
 import json
 import pathlib
 import tempfile
@@ -8,9 +8,9 @@ from unittest.mock import MagicMock, patch
 
 def test_synced_segment_stretch_factor_changes_speed(monkeypatch):
     """stretch_factor changes the computed speed ratio: larger factor = lower speed_factor."""
-    import tts_es
-    monkeypatch.setattr(tts_es, "_ALIGNMENT_ENABLED", True)
-    from tts_es import _synced_segment_audio
+    import tts
+    monkeypatch.setattr(tts, "_ALIGNMENT_ENABLED", True)
+    from tts import _synced_segment_audio
     import numpy as np
     import soundfile as sf
 
@@ -38,9 +38,9 @@ def test_synced_segment_stretch_factor_changes_speed(monkeypatch):
 
 def test_synced_segment_clamp_applied(monkeypatch):
     """Speed factor is clamped to [0.85, 1.25] in alignment-enabled mode."""
-    import tts_es
-    monkeypatch.setattr(tts_es, "_ALIGNMENT_ENABLED", True)
-    from tts_es import _synced_segment_audio
+    import tts
+    monkeypatch.setattr(tts, "_ALIGNMENT_ENABLED", True)
+    from tts import _synced_segment_audio
     import numpy as np
     import soundfile as sf
 
@@ -63,7 +63,7 @@ def test_synced_segment_clamp_applied(monkeypatch):
 
 def test_text_file_to_speech_calls_alignment(tmp_path):
     """text_file_to_speech calls _build_alignment and passes its stretch_factor."""
-    from tts_es import text_file_to_speech
+    from tts import text_file_to_speech
 
     es_seg = {"start": 0.0, "end": 3.0, "text": "Hola mundo"}
     en_seg = {"start": 0.0, "end": 3.0, "text": "Hello world"}
@@ -96,8 +96,8 @@ def test_text_file_to_speech_calls_alignment(tmp_path):
     mock_aligned_seg.action = AlignAction.MILD_STRETCH
 
     engine = MagicMock()
-    with patch("tts_es._synced_segment_audio", side_effect=fake_synced), \
-         patch("tts_es._build_alignment", return_value=([], {0: mock_aligned_seg})):
+    with patch("tts._synced_segment_audio", side_effect=fake_synced), \
+         patch("tts._build_alignment", return_value=([], {0: mock_aligned_seg})):
         text_file_to_speech(str(es_path), str(out_dir), tts_engine=engine)
 
     assert len(called_with_stretch) == 1
@@ -106,7 +106,7 @@ def test_text_file_to_speech_calls_alignment(tmp_path):
 
 def test_text_file_to_speech_missing_en_transcript(tmp_path):
     """When EN transcript is absent, alignment is skipped; synthesis still runs."""
-    from tts_es import text_file_to_speech
+    from tts import text_file_to_speech
 
     # Only ES transcript, no EN counterpart
     es_seg = {"start": 0.0, "end": 2.0, "text": "Hola mundo"}
@@ -127,7 +127,7 @@ def test_text_file_to_speech_missing_en_transcript(tmp_path):
         return AudioSegment.silent(duration=int(target_sec * 1000)), 1.0, target_sec
 
     engine = MagicMock()
-    with patch("tts_es._synced_segment_audio", side_effect=fake_synced):
+    with patch("tts._synced_segment_audio", side_effect=fake_synced):
         text_file_to_speech(str(es_path), str(out_dir), tts_engine=engine)
 
     # Synthesis ran even without EN transcript
@@ -140,7 +140,7 @@ def test_text_file_to_speech_missing_en_transcript(tmp_path):
 
 def test_shorten_segment_text_returns_original_when_stub():
     """_shorten_segment_text returns original ES text when stub returns []."""
-    from tts_es import _shorten_segment_text
+    from tts import _shorten_segment_text
 
     result = _shorten_segment_text(
         en_text="This is a long sentence.",
@@ -152,7 +152,7 @@ def test_shorten_segment_text_returns_original_when_stub():
 
 def test_text_file_to_speech_calls_shorten_for_request_shorter(tmp_path):
     """text_file_to_speech calls _shorten_segment_text for REQUEST_SHORTER segments."""
-    from tts_es import text_file_to_speech
+    from tts import text_file_to_speech
     from foreign_whispers.alignment import AlignAction
     import json
 
@@ -186,9 +186,9 @@ def test_text_file_to_speech_calls_shorten_for_request_shorter(tmp_path):
     mock_aligned_seg.action = AlignAction.REQUEST_SHORTER
 
     engine = MagicMock()
-    with patch("tts_es._shorten_segment_text", side_effect=fake_shorten), \
-         patch("tts_es._synced_segment_audio", side_effect=fake_synced), \
-         patch("tts_es._build_alignment", return_value=([], {0: mock_aligned_seg})):
+    with patch("tts._shorten_segment_text", side_effect=fake_shorten), \
+         patch("tts._synced_segment_audio", side_effect=fake_synced), \
+         patch("tts._build_alignment", return_value=([], {0: mock_aligned_seg})):
         text_file_to_speech(str(es_dir / f"{title}.json"), str(out_dir), tts_engine=engine)
 
     assert len(shorten_calls) == 1, "Expected _shorten_segment_text to be called once"
@@ -198,6 +198,6 @@ def test_text_file_to_speech_calls_shorten_for_request_shorter(tmp_path):
 def test_shorten_segment_text_fallback_on_exception():
     """_shorten_segment_text returns original text when reranking raises."""
     with patch("foreign_whispers.reranking.get_shorter_translations", side_effect=RuntimeError("boom")):
-        from tts_es import _shorten_segment_text
+        from tts import _shorten_segment_text
         result = _shorten_segment_text("source", "target", 2.0)
         assert result == "target"

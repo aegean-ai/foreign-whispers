@@ -1,8 +1,9 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import type { Video } from "@/lib/types";
 import { usePipeline } from "@/hooks/use-pipeline";
-import { useStudioSettings } from "@/hooks/use-studio-settings";
+import { useStudioSettingsContext } from "@/contexts/studio-settings-context";
 import { AppSidebar } from "./app-sidebar";
 import { PipelineCards } from "./pipeline-cards";
 import { PipelineStatusBar } from "./pipeline-status-bar";
@@ -16,8 +17,11 @@ interface StudioLayoutProps {
 }
 
 export function StudioLayout({ videos }: StudioLayoutProps) {
-  const { selectedVideo, selectedVideoId, settings, toggleSetting, selectVideo } =
-    useStudioSettings(videos);
+  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(
+    videos[0]?.id ?? null
+  );
+  const selectedVideo = videos.find((v) => v.id === selectedVideoId) ?? null;
+  const { settings } = useStudioSettingsContext();
   const { state, runPipeline, selectVariant, reset } = usePipeline();
 
   const handleStartPipeline = () => {
@@ -25,10 +29,10 @@ export function StudioLayout({ videos }: StudioLayoutProps) {
     runPipeline(selectedVideo, settings);
   };
 
-  const handleSelectVideo = (videoId: string) => {
-    selectVideo(videoId);
+  const handleSelectVideo = useCallback((videoId: string) => {
+    setSelectedVideoId(videoId);
     reset();
-  };
+  }, [reset]);
 
   return (
     <SidebarProvider
@@ -45,8 +49,6 @@ export function StudioLayout({ videos }: StudioLayoutProps) {
         selectedVideoId={selectedVideoId}
         onSelectVideo={handleSelectVideo}
         pipelineState={state}
-        settings={settings}
-        onToggleSetting={toggleSetting}
         onStartPipeline={handleStartPipeline}
       />
       <SidebarInset>
@@ -64,14 +66,11 @@ export function StudioLayout({ videos }: StudioLayoutProps) {
           </div>
         </header>
 
-        {/* Main content — dashboard-01 pattern */}
+        {/* Main content */}
         <div className="flex flex-1 flex-col">
           <div className="@container/main flex flex-1 flex-col gap-2">
             <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-              {/* Pipeline stage cards */}
               <PipelineCards pipelineState={state} />
-
-              {/* Video player (replaces chart) */}
               <div className="px-4 lg:px-6">
                 <VideoCanvas
                   pipelineState={state}
@@ -79,14 +78,11 @@ export function StudioLayout({ videos }: StudioLayoutProps) {
                   onSelectVariant={selectVariant}
                 />
               </div>
-
-              {/* Pipeline stages table (replaces data table) */}
               <PipelineTable pipelineState={state} settings={settings} />
             </div>
           </div>
         </div>
 
-        {/* Live status bar at bottom */}
         <PipelineStatusBar pipelineState={state} />
       </SidebarInset>
     </SidebarProvider>

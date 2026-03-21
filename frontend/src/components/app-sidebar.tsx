@@ -4,15 +4,11 @@ import * as React from "react";
 import {
   FilmIcon,
   VideoIcon,
-  WorkflowIcon,
   PlayIcon,
 } from "lucide-react";
+import { SettingsDialog } from "./settings-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Accordion } from "@/components/ui/accordion";
-import { DubbingMethodAccordion } from "./dubbing-method-accordion";
-import { DiarizationAccordion } from "./diarization-accordion";
-import { VoiceCloningAccordion } from "./voice-cloning-accordion";
 import {
   Sidebar,
   SidebarContent,
@@ -28,8 +24,7 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
-import type { Video, PipelineState, StudioSettings, VideoVariant } from "@/lib/types";
-import { computeConfigEntries } from "@/lib/config-id";
+import type { Video, PipelineState, VideoVariant } from "@/lib/types";
 
 function getVideoStatus(
   video: Video,
@@ -53,8 +48,6 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   selectedVideoId: string | null;
   onSelectVideo: (videoId: string) => void;
   pipelineState: PipelineState;
-  settings: StudioSettings;
-  onToggleSetting: (group: keyof StudioSettings, value: string) => void;
   onStartPipeline: () => void;
 }
 
@@ -63,13 +56,9 @@ export function AppSidebar({
   selectedVideoId,
   onSelectVideo,
   pipelineState,
-  settings,
-  onToggleSetting,
   onStartPipeline,
   ...props
 }: AppSidebarProps) {
-  const configEntries = computeConfigEntries(settings);
-
   return (
     <Sidebar {...props}>
       <SidebarHeader>
@@ -124,66 +113,20 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarSeparator />
-
-        {/* Pipeline Controls */}
-        <SidebarGroup>
-          <SidebarGroupLabel>
-            <WorkflowIcon className="size-3.5 mr-1.5" />
-            Pipeline Settings
-          </SidebarGroupLabel>
-          <SidebarGroupContent className="px-2">
-            <Accordion multiple defaultValue={["dubbing-method"]}>
-              <DubbingMethodAccordion
-                selected={settings.dubbing}
-                onToggle={(v) => onToggleSetting("dubbing", v)}
-              />
-              <DiarizationAccordion
-                selected={settings.diarization}
-                onToggle={(v) => onToggleSetting("diarization", v)}
-              />
-              <VoiceCloningAccordion
-                selected={settings.voiceCloning}
-                onToggle={(v) => onToggleSetting("voiceCloning", v)}
-              />
-            </Accordion>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarSeparator />
-
-        {/* Config Entries */}
-        <SidebarGroup>
-          <SidebarGroupLabel>
-            Configurations ({configEntries.length})
-          </SidebarGroupLabel>
-          <SidebarGroupContent className="px-2">
-            <div className="flex flex-col gap-1">
-              {configEntries.map((cfg) => (
-                <div
-                  key={cfg.id}
-                  className="flex items-center gap-2 rounded-md border border-border/40 px-2 py-1.5 text-xs"
-                >
-                  <code className="text-[10px] text-muted-foreground font-mono shrink-0">
-                    {cfg.id}
-                  </code>
-                  <span className="truncate">{cfg.label}</span>
-                </div>
-              ))}
-            </div>
-          </SidebarGroupContent>
-        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter>
-        <Button
-          className="w-full"
-          onClick={onStartPipeline}
-          disabled={pipelineState.status === "running"}
-        >
-          <PlayIcon className="size-3.5 mr-1.5" />
-          {pipelineState.status === "running" ? "Processing..." : "Start Pipeline"}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            className="flex-1"
+            onClick={onStartPipeline}
+            disabled={pipelineState.status === "running"}
+          >
+            <PlayIcon className="size-3.5 mr-1.5" />
+            {pipelineState.status === "running" ? "Processing..." : "Start Pipeline"}
+          </Button>
+          <SettingsDialog />
+        </div>
       </SidebarFooter>
 
       <SidebarRail />

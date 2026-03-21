@@ -1,10 +1,10 @@
-"""HTTP-agnostic service wrapping tts_es.py functions."""
+"""HTTP-agnostic service wrapping tts.py functions."""
 
 import pathlib
 from pathlib import Path
 from typing import Any
 
-from tts_es import text_file_to_speech as tts_text_file_to_speech
+from tts import text_file_to_speech as tts_text_file_to_speech
 
 
 class TTSService:

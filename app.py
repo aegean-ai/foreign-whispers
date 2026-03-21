@@ -10,7 +10,7 @@ from download_video import (
 )
 from transcribe import load_model, transcribe_videos
 from translate_en_to_es import download_and_install_package, translate_all_files
-from tts_es import files_from_dir, text_file_to_speech
+from tts import files_from_dir, text_file_to_speech
 from translated_output import stitch_video_with_timestamps
 
 import json

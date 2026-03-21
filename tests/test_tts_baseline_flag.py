@@ -25,7 +25,7 @@ def _write_minimal_transcripts(tmp_path, title="vid"):
 
 def test_sidecar_json_written(tmp_path):
     """text_file_to_speech writes a .align.json sidecar next to the WAV."""
-    from tts_es import text_file_to_speech
+    from tts import text_file_to_speech
 
     es_path = _write_minimal_transcripts(tmp_path)
     out_dir = tmp_path / "out"
@@ -36,7 +36,7 @@ def test_sidecar_json_written(tmp_path):
         return (AudioSegment.silent(duration=int(target_sec * 1000)), 1.0, target_sec)
 
     engine = MagicMock()
-    with patch("tts_es._synced_segment_audio", side_effect=fake_synced):
+    with patch("tts._synced_segment_audio", side_effect=fake_synced):
         text_file_to_speech(str(es_path), str(out_dir), tts_engine=engine)
 
     sidecar = out_dir / "vid.align.json"
@@ -49,7 +49,7 @@ def test_sidecar_json_written(tmp_path):
 
 def test_sidecar_segments_contain_speed_factor(tmp_path):
     """Each segment entry in the sidecar records raw_duration_s and speed_factor."""
-    from tts_es import text_file_to_speech
+    from tts import text_file_to_speech
 
     es_path = _write_minimal_transcripts(tmp_path)
     out_dir = tmp_path / "out"
@@ -60,7 +60,7 @@ def test_sidecar_segments_contain_speed_factor(tmp_path):
         return (AudioSegment.silent(duration=int(target_sec * 1000)), 1.0, target_sec)
 
     engine = MagicMock()
-    with patch("tts_es._synced_segment_audio", side_effect=fake_synced):
+    with patch("tts._synced_segment_audio", side_effect=fake_synced):
         text_file_to_speech(str(es_path), str(out_dir), tts_engine=engine)
 
     report = json.loads((out_dir / "vid.align.json").read_text())
@@ -73,8 +73,8 @@ def test_sidecar_segments_contain_speed_factor(tmp_path):
 def test_fw_alignment_off_uses_unclamped_range(tmp_path, monkeypatch):
     """FW_ALIGNMENT=off bypasses the [0.85, 1.25] clamp (uses legacy [0.1, 10])."""
     monkeypatch.setenv("FW_ALIGNMENT", "off")
-    import importlib, tts_es
-    importlib.reload(tts_es)  # re-evaluate module-level FW_ALIGNMENT read
+    import importlib, tts
+    importlib.reload(tts)  # re-evaluate module-level FW_ALIGNMENT read
 
     import numpy as np
     import soundfile as sf
@@ -91,7 +91,7 @@ def test_fw_alignment_off_uses_unclamped_range(tmp_path, monkeypatch):
             import shutil; shutil.copy(source_wav, file_path)
         engine.tts_to_file.side_effect = fake_tts
 
-        result = tts_es._synced_segment_audio(engine, "test", target_sec=1.0, work_dir=tmpdir)
+        result = tts._synced_segment_audio(engine, "test", target_sec=1.0, work_dir=tmpdir)
         # With legacy clamp [0.1, 10]: speed=5.0 is allowed; result duration ≠ 1s target
         # With new clamp [0.85, 1.25]: speed would be clamped to 1.25; result ≈ 4s → trimmed to 1s
         # In legacy mode rubberband applies speed=5.0, result is 5/5=1s — so both modes trim.

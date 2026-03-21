@@ -46,7 +46,7 @@ function makeVariantId(videoId: string, configId: string): string {
 type Action =
   | { type: "START"; videoId: string; settings: StudioSettings; configs: ConfigEntry[] }
   | { type: "STAGE_ACTIVE"; stage: PipelineStage }
-  | { type: "STAGE_COMPLETE"; stage: PipelineStage; result: unknown; duration_ms: number }
+  | { type: "STAGE_COMPLETE"; stage: PipelineStage; result: unknown; duration_ms: number; skipped?: boolean }
   | { type: "STAGE_ERROR"; stage: PipelineStage; error: string }
   | { type: "SELECT_STAGE"; stage: PipelineStage }
   | { type: "PIPELINE_COMPLETE" }
@@ -98,7 +98,7 @@ function reducer(state: PipelineState, action: Action): PipelineState {
         stages: {
           ...state.stages,
           [action.stage]: {
-            status: "complete",
+            status: action.skipped ? "skipped" : "complete",
             result: action.result,
             duration_ms: action.duration_ms,
           },
@@ -168,11 +168,15 @@ export function usePipeline() {
       const t0 = performance.now();
       try {
         const result = await fn();
+        const skipped = typeof result === "object" && result !== null && "skipped" in result
+          ? (result as Record<string, unknown>).skipped === true
+          : false;
         dispatch({
           type: "STAGE_COMPLETE",
           stage,
           result,
           duration_ms: Math.round(performance.now() - t0),
+          skipped,
         });
         return result;
       } catch (err) {
@@ -187,7 +191,7 @@ export function usePipeline() {
 
     try {
       const dl = await run("download", () => downloadVideo(video.url));
-      await run("transcribe", () => transcribeVideo(dl.video_id));
+      await run("transcribe", () => transcribeVideo(dl.video_id, settings.useYoutubeCaptions));
       await run("translate", () => translateVideo(dl.video_id, "es"));
 
       // Run TTS + stitch for each config entry.

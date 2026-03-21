@@ -18,7 +18,7 @@ export function DubbingMethodAccordion({ selected, onToggle }: DubbingMethodAcco
     <AccordionItem value="dubbing-method">
       <AccordionTrigger className="px-3 text-sm">
         <Volume2Icon className="size-3.5 mr-1.5" />
-        Dubbing Methods
+        Alignment
       </AccordionTrigger>
       <AccordionContent className="px-3 pb-3">
         <div className="flex flex-col gap-2">

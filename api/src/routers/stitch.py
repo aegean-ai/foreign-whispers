@@ -18,17 +18,30 @@ _stitch_service = StitchService(ui_dir=settings.data_dir)
 
 
 def _segments_to_vtt(segments: list[dict]) -> str:
-    """Convert transcript segments to WebVTT format."""
+    """Convert transcript segments to rolling two-line WebVTT format.
+
+    Mimics Google-style captions: each cue shows the current line on top
+    and the previous line on the bottom, creating a smooth reading bridge.
+    """
+    # Filter to non-empty segments first
+    segs = [s for s in segments if s.get("text", "").strip()]
+    if not segs:
+        return "WEBVTT\n"
+
     lines = ["WEBVTT", ""]
-    for i, seg in enumerate(segments, 1):
+    prev_text: str | None = None
+    for i, seg in enumerate(segs, 1):
         start = _format_vtt_time(seg["start"])
         end = _format_vtt_time(seg["end"])
         text = seg.get("text", "").strip()
-        if text:
-            lines.append(str(i))
-            lines.append(f"{start} --> {end}")
+        lines.append(str(i))
+        lines.append(f"{start} --> {end}")
+        if prev_text:
+            lines.append(f"{text}\n{prev_text}")
+        else:
             lines.append(text)
-            lines.append("")
+        lines.append("")
+        prev_text = text
     return "\n".join(lines)
 
 
@@ -131,12 +144,13 @@ async def get_captions(video_id: str):
 
 
 def _youtube_captions_to_vtt(caption_path: pathlib.Path) -> str:
-    """Convert YouTube line-delimited JSON captions to WebVTT.
+    """Convert YouTube line-delimited JSON captions to rolling two-line WebVTT.
 
     YouTube format: {"text": "...", "start": float, "duration": float} per line.
+    Uses the same rolling bridge style as _segments_to_vtt.
     """
-    lines_out = ["WEBVTT", ""]
-    cue_num = 0
+    # Parse and filter valid segments first
+    segs: list[tuple[float, float, str]] = []
     for line in caption_path.read_text().splitlines():
         line = line.strip()
         if not line:
@@ -145,14 +159,23 @@ def _youtube_captions_to_vtt(caption_path: pathlib.Path) -> str:
         text = seg.get("text", "").strip()
         start = seg.get("start", 0)
         duration = seg.get("duration", 0)
-        if not text or duration <= 0:
-            continue
-        cue_num += 1
-        end = start + duration
-        lines_out.append(str(cue_num))
+        if text and duration > 0:
+            segs.append((start, start + duration, text))
+
+    if not segs:
+        return "WEBVTT\n"
+
+    lines_out = ["WEBVTT", ""]
+    prev_text: str | None = None
+    for i, (start, end, text) in enumerate(segs, 1):
+        lines_out.append(str(i))
         lines_out.append(f"{_format_vtt_time(start)} --> {_format_vtt_time(end)}")
-        lines_out.append(text)
+        if prev_text:
+            lines_out.append(f"{text}\n{prev_text}")
+        else:
+            lines_out.append(text)
         lines_out.append("")
+        prev_text = text
     return "\n".join(lines_out)
 
 

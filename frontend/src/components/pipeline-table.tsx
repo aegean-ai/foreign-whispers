@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useElapsed } from "@/hooks/use-elapsed";
 import type { PipelineStage, PipelineState, StageState, StudioSettings } from "@/lib/types";
+import { computeConfigEntries } from "@/lib/config-id";
 
 const STAGES: {
   key: PipelineStage;
@@ -38,6 +39,8 @@ function statusBadge(status: string) {
       return <Badge variant="secondary">Running</Badge>;
     case "complete":
       return <Badge variant="default">Done</Badge>;
+    case "skipped":
+      return <Badge variant="outline">Skipped</Badge>;
     case "error":
       return <Badge variant="destructive">Error</Badge>;
     default:
@@ -92,6 +95,11 @@ interface PipelineTableProps {
 }
 
 export function PipelineTable({ pipelineState, settings }: PipelineTableProps) {
+  const configEntries = computeConfigEntries(settings);
+  const configLabel = configEntries.length === 1
+    ? configEntries[0].id
+    : configEntries.map((c) => c.id).join(", ");
+
   function getConfig(stage: PipelineStage): string {
     switch (stage) {
       case "download":
@@ -106,7 +114,7 @@ export function PipelineTable({ pipelineState, settings }: PipelineTableProps) {
         else parts.push("Baseline");
         if (settings.voiceCloning.length > 0) parts.push(settings.voiceCloning.join(", "));
         if (settings.diarization.length > 0) parts.push(settings.diarization.join(", "));
-        return parts.join(" + ") || "XTTS v2";
+        return parts.join(" + ") || "Chatterbox";
       }
       case "stitch":
         return "ffmpeg + moviepy";
@@ -124,7 +132,10 @@ export function PipelineTable({ pipelineState, settings }: PipelineTableProps) {
             <TableHead>Description</TableHead>
             <TableHead className="w-[100px]">Status</TableHead>
             <TableHead className="w-[100px] text-right">Duration</TableHead>
-            <TableHead>Configuration</TableHead>
+            <TableHead>
+              Configuration{" "}
+              <code className="text-[10px] text-muted-foreground font-mono">{configLabel}</code>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

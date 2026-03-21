@@ -15,3 +15,4 @@ class TranscribeResponse(BaseModel):
     language: str
     text: str
     segments: list[TranscribeSegment]
+    skipped: bool = False

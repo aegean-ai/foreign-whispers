@@ -11,7 +11,6 @@ interface VoiceCloningAccordionProps {
 
 const METHODS = [
   { value: "xtts", label: "XTTS Speaker Embedding", description: "Clone from reference audio via XTTS v2" },
-  { value: "openvoice", label: "OpenVoice", description: "Zero-shot voice cloning" },
 ];
 
 export function VoiceCloningAccordion({ selected, onToggle }: VoiceCloningAccordionProps) {

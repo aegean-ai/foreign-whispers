@@ -7,6 +7,12 @@
 # To add a new video, append an entry here and restart the frontend.
 
 videos:
+  - id: GYQ5yGV_-Oc
+    title: "Strait of Hormuz disruption threatens to shake global economy"
+    url: https://www.youtube.com/watch?v=GYQ5yGV_-Oc
+    source_language: en
+    target_language: es
+
   - id: 6O3HLPWatuU
     title: "Alysa Liu: The 60 Minutes Interview"
     url: https://www.youtube.com/watch?v=6O3HLPWatuU
@@ -22,11 +28,5 @@ videos:
   - id: IiBKsv-D64M
     title: "Military Drones: 60 Minutes Full Episodes"
     url: https://www.youtube.com/watch?v=IiBKsv-D64M
-    source_language: en
-    target_language: es
-
-  - id: GYQ5yGV_-Oc
-    title: "Strait of Hormuz disruption threatens to shake global economy"
-    url: https://www.youtube.com/watch?v=GYQ5yGV_-Oc
     source_language: en
     target_language: es

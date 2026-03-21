@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # Model directory names — change these when swapping backends
     stt_model_dir: str = "whisper"
     translation_model_dir: str = "argos"
-    tts_model_dir: str = "xtts-v2"
+    tts_model_dir: str = "chatterbox"
 
     # File paths
     base_dir: Path = Path(__file__).resolve().parent.parent.parent.parent
@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     vllm_base_url: str = ""
 
     # External service URLs
-    xtts_api_url: str = "http://localhost:8020"
+    chatterbox_api_url: str = "http://localhost:8020"
     whisper_api_url: str = "http://localhost:8000"
 
     # HuggingFace token for pyannote speaker diarization model

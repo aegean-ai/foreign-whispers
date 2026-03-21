@@ -12,10 +12,10 @@ import soundfile as sf
 import pyrubberband
 from pydub import AudioSegment
 
-# ── XTTS API configuration ────────────────────────────────────────────
-XTTS_API_URL = os.getenv("XTTS_API_URL", "http://localhost:8020")
-XTTS_SPEAKER = os.getenv("XTTS_SPEAKER", "default.wav")
-XTTS_LANGUAGE = os.getenv("XTTS_LANGUAGE", "es")
+# ── Chatterbox API configuration ─────────────────────────────────────
+CHATTERBOX_API_URL = os.getenv("CHATTERBOX_API_URL", "http://localhost:8020")
+# Path to the default speaker reference WAV, relative to pipeline_data/speakers/
+CHATTERBOX_SPEAKER_WAV = os.getenv("CHATTERBOX_SPEAKER_WAV", "")
 
 # Set FW_ALIGNMENT=off to use the pre-alignment baseline (legacy unclamped stretch).
 # Default is "on" (new clamped path). Useful for A/B comparisons.
@@ -31,46 +31,38 @@ _SPEED_MIN_LEGACY = 0.1
 _SPEED_MAX_LEGACY = 10.0
 
 
-class XTTSClient:
-    """Thin HTTP client for the XTTS2-Docker FastAPI server."""
+class ChatterboxClient:
+    """Thin HTTP client for the Chatterbox TTS API server (OpenAI-compatible).
 
-    def __init__(self, base_url: str = XTTS_API_URL,
-                 speaker_wav: str = XTTS_SPEAKER,
-                 language: str = XTTS_LANGUAGE):
+    Uses /v1/audio/speech for default voice and /v1/audio/speech/upload
+    when a speaker reference WAV is provided for voice cloning.
+    """
+
+    def __init__(self, base_url: str = CHATTERBOX_API_URL,
+                 speaker_wav: str = CHATTERBOX_SPEAKER_WAV):
         self.base_url = base_url.rstrip("/")
-        self.speaker_wav = speaker_wav
-        self.language = language
+        self.speaker_wav = speaker_wav  # path relative to pipeline_data/speakers/
 
     def tts_to_file(self, text: str, file_path: str, **kwargs) -> None:
-        """Synthesize *text* via the XTTS API and save the WAV to *file_path*.
+        """Synthesize *text* via the Chatterbox API and save the WAV to *file_path*.
 
-        Long sentences are split into chunks of ≤200 chars at sentence
-        boundaries to avoid XTTS GPU hangs on long inputs.
+        If *speaker_wav* is provided (via kwarg or constructor), uses the
+        /v1/audio/speech/upload endpoint with the reference WAV for voice cloning.
+        Otherwise uses /v1/audio/speech with the server's default voice.
         """
-        # Split long text to avoid XTTS hangs
         chunks = self._split_text(text) if len(text) > 200 else [text]
         wav_parts = []
 
+        speaker_wav = kwargs.get("speaker_wav", self.speaker_wav)
+
         for chunk in chunks:
-            resp = requests.post(
-                f"{self.base_url}/tts_to_audio",
-                json={
-                    "text": chunk,
-                    "speaker_wav": kwargs.get("speaker_wav", self.speaker_wav),
-                    "language": kwargs.get("language", self.language),
-                },
-                timeout=(5, 25),
-            )
-            resp.raise_for_status()
-            data = resp.json()
+            if speaker_wav:
+                # Voice cloning: upload the reference WAV
+                wav_parts.append(self._synthesize_with_voice(chunk, speaker_wav))
+            else:
+                # Default voice
+                wav_parts.append(self._synthesize_default(chunk))
 
-            wav_url = data["url"]
-            wav_path = wav_url.split("/output/", 1)[-1]
-            wav_resp = requests.get(f"{self.base_url}/output/{wav_path}", timeout=(5, 15))
-            wav_resp.raise_for_status()
-            wav_parts.append(wav_resp.content)
-
-        # Concatenate WAV parts (simple binary concat works for same-format WAVs)
         if len(wav_parts) == 1:
             pathlib.Path(file_path).write_bytes(wav_parts[0])
         else:
@@ -81,6 +73,40 @@ class XTTSClient:
                     tmp.flush()
                     combined += AudioSegment.from_wav(tmp.name)
             combined.export(file_path, format="wav")
+
+    def _synthesize_default(self, text: str) -> bytes:
+        """Call /v1/audio/speech with the server's default voice."""
+        resp = requests.post(
+            f"{self.base_url}/v1/audio/speech",
+            json={"input": text, "response_format": "wav"},
+            timeout=(5, 60),
+        )
+        resp.raise_for_status()
+        return resp.content
+
+    def _synthesize_with_voice(self, text: str, speaker_wav: str) -> bytes:
+        """Call /v1/audio/speech/upload with a reference WAV for voice cloning."""
+        # Resolve the speaker WAV path — could be relative to speakers dir
+        speakers_base = pathlib.Path(__file__).parent / "pipeline_data" / "speakers"
+        wav_path = speakers_base / speaker_wav
+        if not wav_path.exists():
+            # Try as absolute path
+            wav_path = pathlib.Path(speaker_wav)
+        if not wav_path.exists():
+            _logging.getLogger(__name__).warning(
+                "[tts] Speaker WAV %s not found, falling back to default voice", speaker_wav
+            )
+            return self._synthesize_default(text)
+
+        with open(wav_path, "rb") as f:
+            resp = requests.post(
+                f"{self.base_url}/v1/audio/speech/upload",
+                data={"input": text, "response_format": "wav"},
+                files={"voice_file": (wav_path.name, f, "audio/wav")},
+                timeout=(5, 60),
+            )
+        resp.raise_for_status()
+        return resp.content
 
     @staticmethod
     def _split_text(text: str, max_len: int = 200) -> list[str]:
@@ -96,27 +122,23 @@ class XTTSClient:
                 current = f"{current} {s}".strip() if current else s
         if current:
             chunks.append(current.strip())
-        # If a single sentence exceeds max_len, just keep it (better than truncating)
         return chunks if chunks else [text]
 
 
 def _make_tts_engine():
-    """Create TTS engine: XTTS API client if server is reachable, else local Coqui.
+    """Create TTS engine: Chatterbox API client if server is reachable, else local Coqui.
 
-    Tries XTTS with a real /tts_to_audio test call (not just /languages)
+    Tries Chatterbox with a real /v1/audio/speech test call
     to ensure the model is fully loaded before committing.
     """
     try:
-        r = requests.get(f"{XTTS_API_URL}/languages", timeout=5)
-        if r.ok:
-            # Verify the model is loaded with a tiny test synthesis
-            client = XTTSClient()
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
-                client.tts_to_file(text="prueba", file_path=tmp.name)
-            print(f"[tts_es] Using XTTS GPU server at {XTTS_API_URL}")
-            return client
+        client = ChatterboxClient()
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
+            client.tts_to_file(text="prueba", file_path=tmp.name)
+        print(f"[tts] Using Chatterbox GPU server at {CHATTERBOX_API_URL}")
+        return client
     except Exception as exc:
-        print(f"[tts_es] XTTS not available ({exc}), falling back to local Coqui")
+        print(f"[tts] Chatterbox not available ({exc}), falling back to local Coqui")
 
     # Fallback: local Coqui TTS (for dev/test without Docker)
     import functools
@@ -132,7 +154,7 @@ def _make_tts_engine():
         return _original_torch_load(*args, **kwargs)
     torch.load = _patched_load
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"[tts_es] Using local Coqui TTS on {device}")
+    print(f"[tts] Using local Coqui TTS on {device}")
     return CoquiTTS(model_name="tts_models/es/mai/tacotron2-DDC", progress_bar=False).to(device)
 
 
@@ -182,7 +204,7 @@ def _synthesize_raw(tts_engine, text: str, wav_path: str) -> bytes | None:
         tts_engine.tts_to_file(text=text, file_path=wav_path)
         return pathlib.Path(wav_path).read_bytes()
     except Exception as exc:
-        print(f"[tts_es] TTS failed for segment ({exc}), using silence")
+        print(f"[tts] TTS failed for segment ({exc}), using silence")
         return None
 
 
@@ -271,7 +293,7 @@ def _load_en_transcript(es_source_path: str) -> dict:
     data_dir = es_path.parent.parent.parent
     en_path = data_dir / "transcriptions" / "whisper" / es_path.name
     if not en_path.exists():
-        print(f"[tts_es] EN transcript not found at {en_path}, alignment skipped")
+        print(f"[tts] EN transcript not found at {en_path}, alignment skipped")
         return {}
     with open(en_path) as f:
         return json.load(f)
@@ -291,7 +313,7 @@ def _build_alignment(en_transcript: dict, es_transcript: dict) -> tuple:
         aligned = global_align(metrics, silence_regions=[])
         return metrics, {seg.index: seg for seg in aligned}
     except Exception as exc:
-        print(f"[tts_es] alignment failed ({exc}), proceeding without alignment")
+        print(f"[tts] alignment failed ({exc}), proceeding without alignment")
         return [], {}
 
 
@@ -311,7 +333,7 @@ def _shorten_segment_text(en_text: str, es_text: str, target_sec: float) -> str:
         if candidates:
             return candidates[0].text
     except Exception as exc:
-        _logging.getLogger(__name__).warning("[tts_es] rerank failed: %s", exc)
+        _logging.getLogger(__name__).warning("[tts] rerank failed: %s", exc)
     return es_text
 
 

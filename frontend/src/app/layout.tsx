@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Serif_Display, Geist, Geist_Mono } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { StudioSettingsProvider } from "@/contexts/studio-settings-context";
 import "./globals.css";
 
 const serif = DM_Serif_Display({
@@ -34,7 +35,9 @@ export default function RootLayout({
       <body
         className={`${serif.variable} ${geist.variable} ${geistMono.variable} min-h-screen bg-background font-sans text-foreground antialiased`}
       >
-        <TooltipProvider>{children}</TooltipProvider>
+        <StudioSettingsProvider>
+          <TooltipProvider>{children}</TooltipProvider>
+        </StudioSettingsProvider>
       </body>
     </html>
   );

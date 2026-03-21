@@ -11,7 +11,6 @@ interface DiarizationAccordionProps {
 
 const METHODS = [
   { value: "pyannote", label: "pyannote", description: "Speaker diarization via pyannote.audio" },
-  { value: "whisper-based", label: "Whisper-based", description: "Speaker detection from Whisper timestamps" },
 ];
 
 export function DiarizationAccordion({ selected, onToggle }: DiarizationAccordionProps) {

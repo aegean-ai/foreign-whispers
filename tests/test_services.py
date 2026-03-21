@@ -200,7 +200,7 @@ class TestTranslationService:
 
 
 class TestTTSService:
-    """Tests for TTSService wrapping tts_es.py."""
+    """Tests for TTSService wrapping tts.py."""
 
     def test_text_file_to_speech_delegates(self, tmp_path):
         from api.src.services.tts_service import TTSService

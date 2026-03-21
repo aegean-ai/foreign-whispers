@@ -25,29 +25,22 @@ services:
       retries: 3
       start_period: 30s
 
-  # ── TTS (Text-to-Speech) — XTTS on GPU ─────────────────────────────
-  xtts-gpu:
+  # ── TTS (Text-to-Speech) — Chatterbox on GPU ──────────────────────
+  chatterbox-gpu:
     container_name: foreign-whispers-tts
     profiles: [nvidia]
-    build:
-      context: https://github.com/widlers/XTTS2-Docker.git
-      dockerfile: docker/Dockerfile
+    image: travisvn/chatterbox-tts-api:latest
     restart: unless-stopped
     shm_size: "8gb"
     ports:
       - "8020:8020"
     environment:
-      - COQUI_TOS_AGREED=1
-      - USE_CACHE=true
-      - STREAM_MODE=false
       - DEVICE=cuda
-      - OUTPUT=/app/output
-      - SPEAKER=/app/speakers
-      - MODEL=/app/xtts_models
+      - DEFAULT_MODEL=multilingual
+      - PORT=8020
     volumes:
-      - xtts-models:/app/xtts_models
-      - ./pipeline_data/speakers:/app/speakers
-      - xtts-output:/app/output
+      - chatterbox-models:/app/models
+      - ./pipeline_data/speakers:/app/voices
     deploy:
       resources:
         reservations:
@@ -72,9 +65,8 @@ services:
     network_mode: host
     command: ["uv", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8080"]
     environment:
-      - XTTS_API_URL=http://localhost:8020
+      - CHATTERBOX_API_URL=http://localhost:8020
       - FW_WHISPER_MODEL=base
-      - FW_TTS_MODEL_NAME=tts_models/es/css10/vits
     volumes:
       - ./pipeline_data:/app/pipeline_data
       - ./foreign_whispers:/app/foreign_whispers
@@ -103,5 +95,4 @@ services:
 
 volumes:
   whisper-cache:
-  xtts-models:
-  xtts-output:
+  chatterbox-models:
