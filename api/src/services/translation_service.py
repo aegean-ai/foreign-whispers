@@ -1,21 +1,18 @@
-"""HTTP-agnostic service wrapping translate_en_to_es.py functions."""
+"""HTTP-agnostic service wrapping translation engine functions."""
 
 import copy
-import importlib as _importlib
 import pathlib
 from pathlib import Path
 
-
-def _get_translate_module():
-    return _importlib.import_module("translate_en_to_es")
+from api.src.services import translation_engine as _te
 
 
 def download_and_install_package(from_code: str, to_code: str):
-    return _get_translate_module().download_and_install_package(from_code, to_code)
+    return _te.download_and_install_package(from_code, to_code)
 
 
 def translate_sentence(text: str, from_code: str, to_code: str):
-    return _get_translate_module().translate_sentence(text, from_code, to_code)
+    return _te.translate_sentence(text, from_code, to_code)
 
 
 class TranslationService:

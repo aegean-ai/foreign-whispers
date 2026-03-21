@@ -1,28 +1,22 @@
-"""HTTP-agnostic service wrapping download_video.py functions."""
+"""HTTP-agnostic service wrapping download engine functions."""
 
 import json
 import pathlib
 from pathlib import Path
 
-# Lazy imports — the root-level module may not exist in all environments
-# (e.g. worktrees).  The functions are resolved at call time.
-import importlib as _importlib
-
-
-def _get_download_module():
-    return _importlib.import_module("download_video")
+from api.src.services import download_engine as _dl
 
 
 def get_video_info(url: str):
-    return _get_download_module().get_video_info(url)
+    return _dl.get_video_info(url)
 
 
 def dv_download_video(url: str, destination: str, filename: str | None = None):
-    return _get_download_module().download_video(url, destination, filename)
+    return _dl.download_video(url, destination, filename)
 
 
 def dv_download_caption(url: str, destination: str, filename: str | None = None):
-    return _get_download_module().download_caption(url, destination, filename)
+    return _dl.download_caption(url, destination, filename)
 
 
 class DownloadService:
