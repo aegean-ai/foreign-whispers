@@ -87,7 +87,7 @@ class ChatterboxClient:
     def _synthesize_with_voice(self, text: str, speaker_wav: str) -> bytes:
         """Call /v1/audio/speech/upload with a reference WAV for voice cloning."""
         # Resolve the speaker WAV path — could be relative to speakers dir
-        speakers_base = pathlib.Path(__file__).parent / "pipeline_data" / "speakers"
+        speakers_base = pathlib.Path(__file__).parent.parent.parent.parent / "pipeline_data" / "speakers"
         wav_path = speakers_base / speaker_wav
         if not wav_path.exists():
             # Try as absolute path

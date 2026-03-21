@@ -189,3 +189,15 @@ whisper_models/
 
 # Superpowers brainstorming mockups
 .superpowers/
+
+# Playwright MCP browser state
+.playwright-mcp/
+
+# Claude Code local state
+.claude/
+
+# Beads issue tracker local state
+.beads/
+
+# Verification screenshots (transient)
+*-verify.png

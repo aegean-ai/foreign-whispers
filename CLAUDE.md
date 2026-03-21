@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 1. Download video + closed captions from YouTube
 2. Speech-to-text via Whisper
 3. Source → target language translation (offline, via `argostranslate`)
-4. Translated text → speech via open-source TTS (XTTS v2)
+4. Translated text → speech via open-source TTS (Chatterbox)
 5. Next.js frontend + FastAPI backend
 
 ```text
@@ -36,7 +36,7 @@ foreign-whispers/
 │   ├── youtube_captions/        # yt-dlp caption JSON
 │   ├── transcriptions/whisper/  # Whisper output
 │   ├── translations/argos/      # argostranslate output
-│   ├── tts_audio/xtts-v2/       # TTS WAV per config
+│   ├── tts_audio/chatterbox/     # TTS WAV per config
 │   ├── dubbed_captions/         # Target-language VTT
 │   └── dubbed_videos/           # Final dubbed MP4 per config
 └── docker-compose.yml           # All services
@@ -55,7 +55,7 @@ docker compose --profile nvidia up -d
 - Frontend (Next.js): <http://localhost:8501>
 - API (FastAPI): <http://localhost:8080>
 - STT (Whisper/speaches): <http://localhost:8000>
-- TTS (XTTS): <http://localhost:8020>
+- TTS (Chatterbox): <http://localhost:8020>
 
 After changing Python source or `video_registry.yml`, rebuild the API image:
 
@@ -85,7 +85,7 @@ docker compose --profile nvidia logs -f
 ### Pipeline flow
 
 ```text
-YouTube URL → yt-dlp download → Whisper STT → argostranslate → XTTS TTS → moviepy/ffmpeg stitch → output video
+YouTube URL → yt-dlp download → Whisper STT → argostranslate → Chatterbox TTS → moviepy/ffmpeg stitch → output video
 ```
 
 ### Key design decisions

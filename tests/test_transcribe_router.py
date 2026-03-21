@@ -27,7 +27,7 @@ def client(monkeypatch, ui_dir):
     monkeypatch.setattr(settings, "data_dir", ui_dir)
     monkeypatch.setattr(settings, "ui_dir", ui_dir)
 
-    from main import app
+    from api.src.main import app
 
     with TestClient(app) as c:
         yield c
@@ -55,7 +55,7 @@ def test_transcribe_returns_segments(client, monkeypatch, ui_dir):
     )
 
     # Mock whisper transcribe on the model stored in app.state
-    from main import app
+    from api.src.main import app
 
     app.state.whisper_model.transcribe = MagicMock(return_value=_make_whisper_result())
 
@@ -77,7 +77,7 @@ def test_transcribe_saves_json(client, monkeypatch, ui_dir):
         lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
     )
 
-    from main import app
+    from api.src.main import app
 
     app.state.whisper_model.transcribe = MagicMock(return_value=_make_whisper_result())
 
@@ -100,7 +100,7 @@ def test_transcribe_skips_if_cached(client, monkeypatch, ui_dir):
     cached = ui_dir / "transcriptions" / "whisper" / "Test Title.json"
     cached.write_text(json.dumps(_make_whisper_result()))
 
-    from main import app
+    from api.src.main import app
 
     app.state.whisper_model.transcribe = MagicMock()
 

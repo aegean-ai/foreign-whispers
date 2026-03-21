@@ -7,7 +7,7 @@ const STAGE_MESSAGES: Record<PipelineStage, string> = {
   download: "Downloading video and captions from YouTube...",
   transcribe: "Running faster-whisper-medium speech-to-text (this may take a while for long videos)...",
   translate: "Translating source → target language via argostranslate...",
-  tts: "Synthesizing target-language speech via XTTS v2...",
+  tts: "Synthesizing target-language speech via Chatterbox TTS...",
   stitch: "Stitching audio, video, and subtitles with ffmpeg...",
 };
 

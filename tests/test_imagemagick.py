@@ -18,7 +18,7 @@ def test_imagemagick_binary_discoverable():
 
 def test_moviepy_imagemagick_configured():
     """moviepy must be configured with a valid IMAGEMAGICK_BINARY."""
-    from translated_output import _imagemagick_binary
+    from api.src.services.stitch_engine import _imagemagick_binary
 
     path = _imagemagick_binary()
     assert path is not None, "Could not auto-detect ImageMagick binary"

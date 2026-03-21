@@ -29,7 +29,7 @@ def client(monkeypatch, ui_dir):
     monkeypatch.setattr(settings, "data_dir", ui_dir)
     monkeypatch.setattr(settings, "ui_dir", ui_dir)
 
-    from main import app
+    from api.src.main import app
 
     with TestClient(app) as c:
         yield c

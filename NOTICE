@@ -30,7 +30,6 @@ THIRD-PARTY DEPENDENCIES AND THEIR LICENSES:
 | silero-vad              | MIT            | Optional                                 |
 | pyannote.audio          | MIT            | Optional                                 |
 
-XTTS-v2 model weights are NOT bundled with this software. They are
+Chatterbox TTS model weights are NOT bundled with this software. They are
 fetched at runtime by the TTS container and are licensed separately
-under the Coqui Public Model License (CPML), which restricts use to
-non-commercial purposes.
+under the Resemble AI license terms.

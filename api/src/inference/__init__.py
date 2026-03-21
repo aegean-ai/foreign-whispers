@@ -45,7 +45,7 @@ def get_tts_backend(
     Args:
         kind: ``"local"`` for on-process inference, ``"remote"`` for HTTP.
         model_name: TTS model identifier (used by local backend).
-        api_url: Base URL of the remote XTTS service.
+        api_url: Base URL of the remote Chatterbox TTS service.
     """
     if kind == "local":
         from api.src.inference.tts_local import LocalTTSBackend

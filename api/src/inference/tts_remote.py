@@ -1,4 +1,4 @@
-"""Remote TTS backend — delegates to an XTTS-compatible HTTP endpoint."""
+"""Remote TTS backend — delegates to a Chatterbox-compatible HTTP endpoint."""
 
 from __future__ import annotations
 
@@ -12,19 +12,19 @@ logger = logging.getLogger(__name__)
 
 
 class RemoteTTSBackend(TTSBackend):
-    """Sends text to ``{api_url}/tts_to_audio/`` via HTTP POST."""
+    """Sends text to ``{api_url}/v1/audio/speech`` via HTTP POST."""
 
     def __init__(self, api_url: str) -> None:
         self._api_url = api_url.rstrip("/")
 
     def synthesize(self, text: str, output_path: str) -> str:
         """POST text to the remote TTS service and write the WAV response."""
-        url = f"{self._api_url}/tts_to_audio/"
+        url = f"{self._api_url}/v1/audio/speech"
         logger.info("Remote TTS synthesis: POST %s", url)
 
         response = requests.post(
             url,
-            json={"text": text, "language": "es"},
+            json={"input": text, "response_format": "wav"},
             timeout=300,
         )
         response.raise_for_status()

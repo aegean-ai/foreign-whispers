@@ -1,9 +1,9 @@
-"""HTTP-agnostic service wrapping translated_output.py functions."""
+"""HTTP-agnostic service wrapping stitch engine functions."""
 
 import pathlib
 from pathlib import Path
 
-from translated_output import stitch_audio, stitch_video_with_timestamps
+from api.src.services.stitch_engine import stitch_audio, stitch_video_with_timestamps
 
 
 class StitchService:

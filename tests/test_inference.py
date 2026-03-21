@@ -165,7 +165,7 @@ class TestRemoteWhisperBackend:
 # ---------------------------------------------------------------------------
 
 class TestRemoteTTSBackend:
-    """RemoteTTSBackend POSTs to an XTTS-compatible endpoint."""
+    """RemoteTTSBackend POSTs to a Chatterbox-compatible endpoint."""
 
     @patch("builtins.open", mock_open())
     @patch("requests.post")
@@ -178,7 +178,7 @@ class TestRemoteTTSBackend:
             raise_for_status=lambda: None,
         )
 
-        backend = RemoteTTSBackend(api_url="http://xtts:8020")
+        backend = RemoteTTSBackend(api_url="http://chatterbox:8020")
         result = backend.synthesize("hola mundo", "/tmp/out.wav")
 
         mock_post.assert_called_once()
@@ -195,7 +195,7 @@ class TestRemoteTTSBackend:
             ),
         )
 
-        backend = RemoteTTSBackend(api_url="http://xtts:8020")
+        backend = RemoteTTSBackend(api_url="http://chatterbox:8020")
         with pytest.raises(requests.exceptions.HTTPError):
             backend.synthesize("hola", "/tmp/out.wav")
 

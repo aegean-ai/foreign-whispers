@@ -25,7 +25,7 @@ class TestLocalStorageBackend:
         from api.src.services.storage_service import LocalStorageBackend
 
         backend = LocalStorageBackend(base_dir=tmp_path)
-        key = "tts_audio/xtts-v2/clip.wav"
+        key = "tts_audio/chatterbox/clip.wav"
         data = b"audio data"
 
         backend.save(key, data)

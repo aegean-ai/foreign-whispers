@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
     """Lazy model loading — models are loaded on first use, not at startup.
 
     This avoids blocking startup in Docker Compose where Whisper and TTS
-    inference may be handled by separate containers (speaches, XTTS).
+    inference may be handled by separate containers (speaches, Chatterbox).
     """
     app.state._whisper_model = None
     app.state._tts_model = None

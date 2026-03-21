@@ -39,7 +39,7 @@ def test_api_service_has_bind_mounts(compose_config):
 def test_gpu_services_exist(compose_config):
     """nvidia profile must define STT and TTS GPU services."""
     assert "whisper-gpu" in compose_config["services"]
-    assert "xtts-gpu" in compose_config["services"]
+    assert "chatterbox-gpu" in compose_config["services"]
 
 
 def test_frontend_service_exists(compose_config):

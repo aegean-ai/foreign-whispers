@@ -25,7 +25,7 @@ def _write_minimal_transcripts(tmp_path, title="vid"):
 
 def test_sidecar_json_written(tmp_path):
     """text_file_to_speech writes a .align.json sidecar next to the WAV."""
-    from tts import text_file_to_speech
+    from api.src.services.tts_engine import text_file_to_speech
 
     es_path = _write_minimal_transcripts(tmp_path)
     out_dir = tmp_path / "out"
@@ -36,7 +36,7 @@ def test_sidecar_json_written(tmp_path):
         return (AudioSegment.silent(duration=int(target_sec * 1000)), 1.0, target_sec)
 
     engine = MagicMock()
-    with patch("tts._synced_segment_audio", side_effect=fake_synced):
+    with patch("api.src.services.tts_engine._synced_segment_audio", side_effect=fake_synced):
         text_file_to_speech(str(es_path), str(out_dir), tts_engine=engine)
 
     sidecar = out_dir / "vid.align.json"
@@ -49,7 +49,7 @@ def test_sidecar_json_written(tmp_path):
 
 def test_sidecar_segments_contain_speed_factor(tmp_path):
     """Each segment entry in the sidecar records raw_duration_s and speed_factor."""
-    from tts import text_file_to_speech
+    from api.src.services.tts_engine import text_file_to_speech
 
     es_path = _write_minimal_transcripts(tmp_path)
     out_dir = tmp_path / "out"
@@ -60,7 +60,7 @@ def test_sidecar_segments_contain_speed_factor(tmp_path):
         return (AudioSegment.silent(duration=int(target_sec * 1000)), 1.0, target_sec)
 
     engine = MagicMock()
-    with patch("tts._synced_segment_audio", side_effect=fake_synced):
+    with patch("api.src.services.tts_engine._synced_segment_audio", side_effect=fake_synced):
         text_file_to_speech(str(es_path), str(out_dir), tts_engine=engine)
 
     report = json.loads((out_dir / "vid.align.json").read_text())

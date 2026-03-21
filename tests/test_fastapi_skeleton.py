@@ -14,7 +14,7 @@ def client(monkeypatch):
     monkeypatch.setattr("whisper.load_model", lambda *a, **kw: MagicMock())
     monkeypatch.setattr("TTS.api.TTS", lambda *a, **kw: MagicMock())
 
-    from main import app
+    from api.src.main import app
 
     with TestClient(app) as c:
         yield c
@@ -42,7 +42,7 @@ def test_openapi_schema(client):
 
 def test_models_loaded_in_app_state(client):
     """Verify that lifespan loaded models into app.state."""
-    from main import app
+    from api.src.main import app
 
     assert hasattr(app.state, "whisper_model")
     assert hasattr(app.state, "tts_model")

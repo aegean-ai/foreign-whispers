@@ -16,7 +16,7 @@ flowchart LR
         DL[Download<br/>yt-dlp]
         TR[Transcribe<br/>Whisper]
         TL[Translate<br/>argostranslate]
-        TTS[Synthesize Speech<br/>XTTS v2 GPU]
+        TTS[Synthesize Speech<br/>Chatterbox GPU]
         ST[Render Dubbed Video<br/>ffmpeg remux]
     end
 
@@ -49,7 +49,7 @@ flowchart LR
 Two profiles are available via Docker Compose:
 
 ```bash
-# NVIDIA GPU — Whisper + XTTS on dedicated GPU containers
+# NVIDIA GPU — Whisper + Chatterbox on dedicated GPU containers
 docker compose --profile nvidia up -d
 
 # CPU only — no GPU containers (STT/TTS must be provided externally)
@@ -65,7 +65,7 @@ Open **http://localhost:8501** in your browser.
 | **Download** | Fetch video + captions from YouTube via yt-dlp | `videos/`, `youtube_captions/` |
 | **Transcribe** | Speech-to-text via Whisper | `transcriptions/whisper/` |
 | **Translate** | Source → target language via argostranslate (offline, OpenNMT) | `translations/argos/` |
-| **Synthesize Speech** | TTS via XTTS v2 (GPU) or Coqui (CPU fallback), time-aligned to original segments | `tts_audio/xtts-v2/` |
+| **Synthesize Speech** | TTS via Chatterbox (GPU) or Coqui (CPU fallback), time-aligned to original segments | `tts_audio/chatterbox/` |
 | **Render Dubbed Video** | Replace audio track via ffmpeg remux (no re-encoding) | `dubbed_videos/` |
 
 Captions are served as WebVTT via the `<track>` element — no subtitle burn-in:
@@ -98,7 +98,7 @@ foreign-whispers/
 ├── download_video.py            # yt-dlp wrapper
 ├── transcribe.py                # Whisper wrapper
 ├── translate_en_to_es.py        # argostranslate wrapper
-├── tts_es.py                    # XTTS client + time-aligned TTS generation
+├── tts_es.py                    # Chatterbox client + time-aligned TTS generation
 ├── translated_output.py         # ffmpeg audio remux + legacy subtitle compositing
 ├── pipeline_data/               # All intermediate and output files (volume-mounted)
 │   └── api/
@@ -109,7 +109,7 @@ foreign-whispers/
 │       ├── translations/
 │       │   └── argos/           # argostranslate output JSON
 │       ├── tts_audio/
-│       │   └── xtts-v2/         # TTS WAV files per config
+│       │   └── chatterbox/       # TTS WAV files per config
 │       ├── dubbed_captions/     # Target-language VTT
 │       ├── dubbed_videos/       # Final dubbed MP4s per config
 │       └── speakers/            # Reference voice clips
@@ -147,7 +147,7 @@ Host machine
 │
 └── Docker Compose
     ├── foreign-whispers-stt   (GPU)  :8000  — Whisper inference
-    ├── foreign-whispers-tts   (GPU)  :8020  — XTTS v2 inference
+    ├── foreign-whispers-tts   (GPU)  :8020  — Chatterbox inference
     ├── foreign-whispers-api   (CPU)  :8080  — FastAPI orchestrator
     └── foreign-whispers-frontend      :8501  — Next.js UI
 ```
@@ -246,4 +246,4 @@ cd frontend && pnpm install && pnpm dev
 - Python 3.11
 - ffmpeg (system-wide)
 - deno (for yt-dlp YouTube extraction)
-- NVIDIA GPU recommended for Whisper + XTTS inference
+- NVIDIA GPU recommended for Whisper + Chatterbox inference

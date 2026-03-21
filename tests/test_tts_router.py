@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture()
 def ui_dir(tmp_path):
     (tmp_path / "translations" / "argos").mkdir(parents=True)
-    (tmp_path / "tts_audio" / "xtts-v2").mkdir(parents=True)
+    (tmp_path / "tts_audio" / "chatterbox").mkdir(parents=True)
     return tmp_path
 
 
@@ -24,7 +24,7 @@ def client(monkeypatch, ui_dir):
 
     monkeypatch.setattr(settings, "data_dir", ui_dir)
 
-    from main import app
+    from api.src.main import app
 
     with TestClient(app) as c:
         yield c
@@ -71,7 +71,7 @@ def test_tts_skips_if_cached(client, monkeypatch, ui_dir):
         lambda video_id: "Test Title",
     )
 
-    config_dir = ui_dir / "tts_audio" / "xtts-v2" / "c-0000000"
+    config_dir = ui_dir / "tts_audio" / "chatterbox" / "c-0000000"
     config_dir.mkdir(parents=True)
     wav = config_dir / "Test Title.wav"
     wav.write_bytes(b"RIFF" + b"\x00" * 100)

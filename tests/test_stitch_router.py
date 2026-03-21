@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 def ui_dir(tmp_path):
     (tmp_path / "videos").mkdir()
     (tmp_path / "translations" / "argos").mkdir(parents=True)
-    (tmp_path / "tts_audio" / "xtts-v2").mkdir(parents=True)
+    (tmp_path / "tts_audio" / "chatterbox").mkdir(parents=True)
     (tmp_path / "dubbed_videos").mkdir()
     return tmp_path
 
@@ -27,7 +27,7 @@ def client(monkeypatch, ui_dir):
     monkeypatch.setattr(settings, "ui_dir", ui_dir)
     monkeypatch.setattr(settings, "data_dir", ui_dir)
 
-    from main import app
+    from api.src.main import app
 
     with TestClient(app) as c:
         yield c
@@ -36,7 +36,7 @@ def client(monkeypatch, ui_dir):
 def _setup_stitch_inputs(ui_dir, config="c-0000000"):
     """Create all prerequisite files for stitching."""
     (ui_dir / "videos" / "Test Title.mp4").write_bytes(b"fake-video")
-    audio_dir = ui_dir / "tts_audio" / "xtts-v2" / config
+    audio_dir = ui_dir / "tts_audio" / "chatterbox" / config
     audio_dir.mkdir(parents=True, exist_ok=True)
     (audio_dir / "Test Title.wav").write_bytes(b"fake-audio")
     trans = {

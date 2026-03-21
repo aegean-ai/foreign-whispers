@@ -7,8 +7,8 @@ import pytest
 
 
 def test_no_hardcoded_ui_paths_in_translated_output():
-    """translated_output.py must not contain hardcoded './ui/' or './videos' paths."""
-    source = pathlib.Path("translated_output.py").read_text()
+    """stitch_engine.py must not contain hardcoded './ui/' or './videos' paths."""
+    source = pathlib.Path("api/src/services/stitch_engine.py").read_text()
     tree = ast.parse(source)
 
     hardcoded_literals = []
@@ -26,7 +26,7 @@ def test_no_hardcoded_ui_paths_in_translated_output():
 def test_stitch_accepts_all_paths_as_parameters():
     """stitch_video_with_timestamps must accept all paths as parameters, not build them internally."""
     import inspect
-    from translated_output import stitch_video_with_timestamps
+    from api.src.services.stitch_engine import stitch_video_with_timestamps
 
     sig = inspect.signature(stitch_video_with_timestamps)
     params = list(sig.parameters.keys())

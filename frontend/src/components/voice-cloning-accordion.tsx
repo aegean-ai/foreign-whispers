@@ -10,7 +10,7 @@ interface VoiceCloningAccordionProps {
 }
 
 const METHODS = [
-  { value: "xtts", label: "XTTS Speaker Embedding", description: "Clone from reference audio via XTTS v2" },
+  { value: "chatterbox", label: "Chatterbox Voice Cloning", description: "Clone from reference audio via Chatterbox (Resemble AI)" },
 ];
 
 export function VoiceCloningAccordion({ selected, onToggle }: VoiceCloningAccordionProps) {
