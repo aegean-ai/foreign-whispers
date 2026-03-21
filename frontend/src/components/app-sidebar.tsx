@@ -127,6 +127,9 @@ export function AppSidebar({
           </Button>
           <SettingsDialog />
         </div>
+        <div className="text-center text-[10px] text-muted-foreground/60 pb-1">
+          Aegean AI Inc.
+        </div>
       </SidebarFooter>
 
       <SidebarRail />
