@@ -11,8 +11,9 @@ from fastapi.testclient import TestClient
 @pytest.fixture()
 def ui_dir(tmp_path):
     """Provide a temporary ui directory tree."""
-    for sub in ("raw_video", "raw_caption", "raw_transcription"):
+    for sub in ("videos", "youtube_captions"):
         (tmp_path / sub).mkdir()
+    (tmp_path / "transcriptions" / "whisper").mkdir(parents=True)
     return tmp_path
 
 
@@ -25,6 +26,7 @@ def client(monkeypatch, ui_dir):
     # Patch settings so file I/O goes to tmp_path
     from api.src.core.config import settings
 
+    monkeypatch.setattr(settings, "data_dir", ui_dir)
     monkeypatch.setattr(settings, "ui_dir", ui_dir)
 
     from main import app
@@ -46,15 +48,15 @@ def test_download_returns_video_id_and_title(client, monkeypatch, ui_dir):
     )
     monkeypatch.setattr(
         "api.src.services.download_service.dv_download_video",
-        lambda url, dest: str(ui_dir / "raw_video" / "Test Title.mp4"),
+        lambda url, dest, fn=None: str(ui_dir / "videos" / "Test Title.mp4"),
     )
     monkeypatch.setattr(
         "api.src.services.download_service.dv_download_caption",
-        lambda url, dest: str(ui_dir / "raw_caption" / "Test Title.txt"),
+        lambda url, dest, fn=None: str(ui_dir / "youtube_captions" / "Test Title.txt"),
     )
 
     # Write a fake transcript so the endpoint can read it back
-    caption_path = ui_dir / "raw_caption" / "Test Title.txt"
+    caption_path = ui_dir / "youtube_captions" / "Test Title.txt"
     for seg in fake_segments:
         caption_path.write_text(json.dumps(seg) + "\n")
 
@@ -74,8 +76,8 @@ def test_download_skips_redownload(client, monkeypatch, ui_dir):
     )
 
     # Create files so the endpoint thinks it's cached
-    (ui_dir / "raw_video" / "Test Title.mp4").write_bytes(b"fake")
-    caption_path = ui_dir / "raw_caption" / "Test Title.txt"
+    (ui_dir / "videos" / "Test Title.mp4").write_bytes(b"fake")
+    caption_path = ui_dir / "youtube_captions" / "Test Title.txt"
     caption_path.write_text(json.dumps({"start": 0, "end": 1, "text": "Hi"}) + "\n")
 
     download_called = {"count": 0}

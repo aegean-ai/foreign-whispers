@@ -17,9 +17,9 @@ router = APIRouter(prefix="/api")
 @router.post("/transcribe/{video_id}", response_model=TranscribeResponse)
 async def transcribe_endpoint(video_id: str, request: Request):
     """Run Whisper transcription on a downloaded video."""
-    raw_video_dir = settings.data_dir / "raw_video"
-    raw_transcription_dir = settings.data_dir / "raw_transcription"
-    raw_transcription_dir.mkdir(parents=True, exist_ok=True)
+    videos_dir = settings.videos_dir
+    transcriptions_dir = settings.transcriptions_dir
+    transcriptions_dir.mkdir(parents=True, exist_ok=True)
 
     svc = TranscriptionService(
         ui_dir=settings.data_dir,
@@ -30,7 +30,7 @@ async def transcribe_endpoint(video_id: str, request: Request):
     if title is None:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found in index")
 
-    transcript_path = raw_transcription_dir / f"{title}.json"
+    transcript_path = transcriptions_dir / f"{title}.json"
 
     # Skip if already transcribed
     if transcript_path.exists():
@@ -42,7 +42,7 @@ async def transcribe_endpoint(video_id: str, request: Request):
             segments=data.get("segments", []),
         )
 
-    video_path = raw_video_dir / f"{title}.mp4"
+    video_path = videos_dir / f"{title}.mp4"
     result = svc.transcribe(str(video_path))
 
     # Persist result

@@ -31,7 +31,14 @@ foreign-whispers/
 │   └── evaluation.py           # clip_evaluation_report()
 ├── frontend/                    # Next.js UI (port 8501 in Docker)
 ├── video_registry.yml           # Single source of truth for pipeline videos
-├── pipeline_data/               # Runtime artifacts (audio, transcripts, video)
+├── pipeline_data/api/            # Runtime artifacts — model-namespaced dirs
+│   ├── videos/                  # Source MP4s
+│   ├── youtube_captions/        # yt-dlp caption JSON
+│   ├── transcriptions/whisper/  # Whisper output
+│   ├── translations/argos/      # argostranslate output
+│   ├── tts_audio/xtts-v2/       # TTS WAV per config
+│   ├── dubbed_captions/         # Target-language VTT
+│   └── dubbed_videos/           # Final dubbed MP4 per config
 └── docker-compose.yml           # All services
 ```
 
@@ -53,8 +60,8 @@ docker compose --profile nvidia up -d
 After changing Python source or `video_registry.yml`, rebuild the API image:
 
 ```bash
-docker compose --profile nvidia build api-gpu
-docker compose --profile nvidia up -d api-gpu
+docker compose --profile nvidia build api
+docker compose --profile nvidia up -d api
 ```
 
 To stop all services:
@@ -85,6 +92,7 @@ YouTube URL → yt-dlp download → Whisper STT → argostranslate → XTTS TTS 
 
 - `video_registry.yml` drives the video list; no database.
 - `foreign_whispers` library handles temporal alignment between source-language segments and target-language TTS audio.
+- Pipeline directory names are centralised in `api/src/core/config.py` as `@property` methods on `Settings`. Use `settings.videos_dir`, `settings.transcriptions_dir`, etc. — never hardcode directory names in routers.
 - Optional heavy deps (`silero-vad`, `pyannote.audio`, `logfire`) degrade gracefully when absent.
 
 ## Open Issues

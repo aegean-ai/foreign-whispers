@@ -68,10 +68,10 @@ def test_text_file_to_speech_calls_alignment(tmp_path):
     es_seg = {"start": 0.0, "end": 3.0, "text": "Hola mundo"}
     en_seg = {"start": 0.0, "end": 3.0, "text": "Hello world"}
 
-    es_dir = tmp_path / "translated_transcription"
-    en_dir = tmp_path / "raw_transcription"
-    es_dir.mkdir()
-    en_dir.mkdir()
+    es_dir = tmp_path / "translations" / "argos"
+    en_dir = tmp_path / "transcriptions" / "whisper"
+    es_dir.mkdir(parents=True)
+    en_dir.mkdir(parents=True)
 
     title = "test_video"
     es_path = es_dir / f"{title}.json"
@@ -110,8 +110,8 @@ def test_text_file_to_speech_missing_en_transcript(tmp_path):
 
     # Only ES transcript, no EN counterpart
     es_seg = {"start": 0.0, "end": 2.0, "text": "Hola mundo"}
-    es_dir = tmp_path / "translated_transcription"
-    es_dir.mkdir()
+    es_dir = tmp_path / "translations" / "argos"
+    es_dir.mkdir(parents=True)
     title = "no_en"
     es_path = es_dir / f"{title}.json"
     es_path.write_text(json.dumps({"segments": [es_seg], "text": "Hola mundo"}))
@@ -159,9 +159,9 @@ def test_text_file_to_speech_calls_shorten_for_request_shorter(tmp_path):
     es_seg = {"start": 0.0, "end": 3.0, "text": "Esta es una oración muy larga que no cabe."}
     en_seg = {"start": 0.0, "end": 3.0, "text": "Hello world"}
 
-    es_dir = tmp_path / "translated_transcription"
-    en_dir = tmp_path / "raw_transcription"
-    es_dir.mkdir(); en_dir.mkdir()
+    es_dir = tmp_path / "translations" / "argos"
+    en_dir = tmp_path / "transcriptions" / "whisper"
+    es_dir.mkdir(parents=True, exist_ok=True); en_dir.mkdir(parents=True, exist_ok=True)
 
     title = "test_shorten"
     (es_dir / f"{title}.json").write_text(json.dumps({"segments": [es_seg], "text": es_seg["text"]}))

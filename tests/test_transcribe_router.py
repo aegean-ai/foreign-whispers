@@ -11,8 +11,8 @@ from fastapi.testclient import TestClient
 @pytest.fixture()
 def ui_dir(tmp_path):
     """Provide a temporary ui directory tree."""
-    for sub in ("raw_video", "raw_transcription"):
-        (tmp_path / sub).mkdir()
+    (tmp_path / "videos").mkdir()
+    (tmp_path / "transcriptions" / "whisper").mkdir(parents=True)
     return tmp_path
 
 
@@ -24,6 +24,7 @@ def client(monkeypatch, ui_dir):
 
     from api.src.core.config import settings
 
+    monkeypatch.setattr(settings, "data_dir", ui_dir)
     monkeypatch.setattr(settings, "ui_dir", ui_dir)
 
     from main import app
@@ -45,7 +46,7 @@ def _make_whisper_result():
 def test_transcribe_returns_segments(client, monkeypatch, ui_dir):
     """POST /api/transcribe/{video_id} returns structured segments."""
     # Create a fake video file matching the expected pattern
-    (ui_dir / "raw_video" / "Test Title.mp4").write_bytes(b"fake-video")
+    (ui_dir / "videos" / "Test Title.mp4").write_bytes(b"fake-video")
 
     # Mock title_for_video_id on the TranscriptionService class
     monkeypatch.setattr(
@@ -68,8 +69,8 @@ def test_transcribe_returns_segments(client, monkeypatch, ui_dir):
 
 
 def test_transcribe_saves_json(client, monkeypatch, ui_dir):
-    """Transcription result is persisted to raw_transcription/{title}.json."""
-    (ui_dir / "raw_video" / "Test Title.mp4").write_bytes(b"fake-video")
+    """Transcription result is persisted to transcriptions/whisper/{title}.json."""
+    (ui_dir / "videos" / "Test Title.mp4").write_bytes(b"fake-video")
 
     monkeypatch.setattr(
         "api.src.services.transcription_service.TranscriptionService.title_for_video_id",
@@ -82,7 +83,7 @@ def test_transcribe_saves_json(client, monkeypatch, ui_dir):
 
     client.post("/api/transcribe/G3Eup4mfJdA")
 
-    saved = ui_dir / "raw_transcription" / "Test Title.json"
+    saved = ui_dir / "transcriptions" / "whisper" / "Test Title.json"
     assert saved.exists()
     data = json.loads(saved.read_text())
     assert data["text"] == "Hello world"
@@ -96,7 +97,7 @@ def test_transcribe_skips_if_cached(client, monkeypatch, ui_dir):
     )
 
     # Pre-populate cached transcription
-    cached = ui_dir / "raw_transcription" / "Test Title.json"
+    cached = ui_dir / "transcriptions" / "whisper" / "Test Title.json"
     cached.write_text(json.dumps(_make_whisper_result()))
 
     from main import app

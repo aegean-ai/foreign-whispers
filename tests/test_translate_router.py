@@ -10,8 +10,8 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture()
 def ui_dir(tmp_path):
-    for sub in ("raw_transcription", "translated_transcription"):
-        (tmp_path / sub).mkdir()
+    (tmp_path / "transcriptions" / "whisper").mkdir(parents=True)
+    (tmp_path / "translations" / "argos").mkdir(parents=True)
     return tmp_path
 
 
@@ -22,6 +22,7 @@ def client(monkeypatch, ui_dir):
 
     from api.src.core.config import settings
 
+    monkeypatch.setattr(settings, "data_dir", ui_dir)
     monkeypatch.setattr(settings, "ui_dir", ui_dir)
 
     from main import app
@@ -40,17 +41,19 @@ def _fake_transcript():
     }
 
 
+def _patch_resolve_title(monkeypatch, title="Test Title"):
+    """Patch resolve_title where the translate router imports it."""
+    import api.src.routers.translate as mod
+    monkeypatch.setattr(mod, "resolve_title", lambda vid: title)
+
+
 def test_translate_returns_translated_segments(client, monkeypatch, ui_dir):
     """POST /api/translate/{video_id} returns translated segments."""
-    # Write source transcript
-    src = ui_dir / "raw_transcription" / "Test Title.json"
+    _patch_resolve_title(monkeypatch)
+
+    src = ui_dir / "transcriptions" / "whisper" / "Test Title.json"
     src.write_text(json.dumps(_fake_transcript()))
 
-    monkeypatch.setattr(
-        "api.src.services.translation_service.TranslationService.title_for_video_id",
-        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
-    )
-    # Stub argos translate to just upper-case text
     monkeypatch.setattr(
         "api.src.services.translation_service.translate_sentence",
         lambda text, fc, tc: text.upper(),
@@ -69,14 +72,12 @@ def test_translate_returns_translated_segments(client, monkeypatch, ui_dir):
 
 
 def test_translate_persists_json(client, monkeypatch, ui_dir):
-    """Translated output is saved to translated_transcription/{title}.json."""
-    src = ui_dir / "raw_transcription" / "Test Title.json"
+    """Translated output is saved to translations/argos/{title}.json."""
+    _patch_resolve_title(monkeypatch)
+
+    src = ui_dir / "transcriptions" / "whisper" / "Test Title.json"
     src.write_text(json.dumps(_fake_transcript()))
 
-    monkeypatch.setattr(
-        "api.src.services.translation_service.TranslationService.title_for_video_id",
-        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
-    )
     monkeypatch.setattr(
         "api.src.services.translation_service.translate_sentence",
         lambda text, fc, tc: text.upper(),
@@ -88,7 +89,7 @@ def test_translate_persists_json(client, monkeypatch, ui_dir):
 
     client.post("/api/translate/G3Eup4mfJdA?target_language=es")
 
-    saved = ui_dir / "translated_transcription" / "Test Title.json"
+    saved = ui_dir / "translations" / "argos" / "Test Title.json"
     assert saved.exists()
     data = json.loads(saved.read_text())
     assert data["language"] == "es"
@@ -96,18 +97,14 @@ def test_translate_persists_json(client, monkeypatch, ui_dir):
 
 def test_translate_skips_if_cached(client, monkeypatch, ui_dir):
     """Skip re-translation when output JSON already exists (fixes 5ss)."""
-    monkeypatch.setattr(
-        "api.src.services.translation_service.TranslationService.title_for_video_id",
-        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
-    )
+    _patch_resolve_title(monkeypatch)
 
-    # Pre-populate cached translation
     cached_data = {
         "text": "HOLA MUNDO",
         "language": "es",
         "segments": [{"id": 0, "start": 0.0, "end": 2.5, "text": " HOLA MUNDO"}],
     }
-    cached = ui_dir / "translated_transcription" / "Test Title.json"
+    cached = ui_dir / "translations" / "argos" / "Test Title.json"
     cached.write_text(json.dumps(cached_data))
 
     translate_called = {"count": 0}
@@ -127,11 +124,8 @@ def test_translate_skips_if_cached(client, monkeypatch, ui_dir):
 
 
 def test_translate_source_not_found(client, monkeypatch, ui_dir):
-    """Returns 404 when source transcription doesn't exist."""
-    monkeypatch.setattr(
-        "api.src.services.translation_service.TranslationService.title_for_video_id",
-        lambda self_or_vid, vid_or_dir, search_dir=None: None,
-    )
+    """Returns 404 when video is not in registry."""
+    _patch_resolve_title(monkeypatch, title=None)
 
     resp = client.post("/api/translate/NONEXISTENT?target_language=es")
     assert resp.status_code == 404

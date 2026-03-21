@@ -1,4 +1,4 @@
-"""Tests for Docker Compose configuration (issue iy7)."""
+"""Tests for Docker Compose configuration."""
 
 import pathlib
 
@@ -17,37 +17,31 @@ def test_api_service_exists(compose_config):
     assert "api" in compose_config["services"]
 
 
-def test_api_service_port_8000(compose_config):
-    """API service must expose port 8000."""
-    ports = compose_config["services"]["api"]["ports"]
-    assert any("8000" in str(p) for p in ports)
+def test_api_service_uses_network_mode_host(compose_config):
+    """API service must use host networking (port 8080)."""
+    assert compose_config["services"]["api"].get("network_mode") == "host"
 
 
-def test_api_service_has_shared_media_volume(compose_config):
-    """API and app services must share a media volume for intermediate files."""
-    api_volumes = compose_config["services"]["api"].get("volumes", [])
-    app_volumes = compose_config["services"]["app"].get("volumes", [])
-    # Both should mount ./ui (or a named volume) at the same path
-    api_ui_mounts = [v for v in api_volumes if "/app/ui" in str(v)]
-    app_ui_mounts = [v for v in app_volumes if "/app/ui" in str(v)]
-    assert len(api_ui_mounts) > 0, "API service must mount shared ui volume"
-    assert len(app_ui_mounts) > 0, "App service must mount shared ui volume"
+def test_api_service_has_uvicorn_command(compose_config):
+    """API service must have a uvicorn entrypoint."""
+    command = compose_config["services"]["api"].get("command", [])
+    assert any("uvicorn" in str(c) for c in command)
 
 
-def test_app_depends_on_api(compose_config):
-    """Streamlit app should depend on the API service."""
-    app_deps = compose_config["services"]["app"].get("depends_on", {})
-    assert "api" in app_deps or "api" in (app_deps if isinstance(app_deps, list) else [])
+def test_api_service_has_bind_mounts(compose_config):
+    """API service must bind-mount foreign_whispers/ and api/ for live editing."""
+    volumes = compose_config["services"]["api"].get("volumes", [])
+    volume_str = " ".join(str(v) for v in volumes)
+    assert "foreign_whispers" in volume_str
+    assert "./api" in volume_str
 
 
-def test_dockerfile_has_api_entrypoint():
-    """Dockerfile must have a uvicorn CMD or the api service must override it."""
-    compose = yaml.safe_load(open("docker-compose.yml"))
-    api_svc = compose["services"]["api"]
-    # Either the Dockerfile CMD runs uvicorn, or compose overrides the command
-    has_command = "command" in api_svc
-    dockerfile_text = pathlib.Path("Dockerfile").read_text()
-    has_uvicorn_in_dockerfile = "uvicorn" in dockerfile_text
-    assert has_command or has_uvicorn_in_dockerfile, (
-        "API service needs a uvicorn entrypoint"
-    )
+def test_gpu_services_exist(compose_config):
+    """nvidia profile must define STT and TTS GPU services."""
+    assert "whisper-gpu" in compose_config["services"]
+    assert "xtts-gpu" in compose_config["services"]
+
+
+def test_frontend_service_exists(compose_config):
+    """docker-compose.yml must define a frontend service."""
+    assert "frontend" in compose_config["services"]

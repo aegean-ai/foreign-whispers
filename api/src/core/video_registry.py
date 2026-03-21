@@ -1,6 +1,6 @@
 """Video registry — loads video_registry.yml as the single source of truth.
 
-All video metadata (ID, title, filename, URL) is defined in video_registry.yml
+All video metadata (ID, title, URL) is defined in video_registry.yml
 at the repo root. This module provides lookup functions used by routers and services.
 """
 
@@ -15,9 +15,8 @@ import yaml
 class VideoEntry:
     id: str
     title: str
-    filename: str
     url: str
-    language: str = "en"
+    source_language: str = "en"
     target_language: str = "es"
 
 
@@ -35,9 +34,8 @@ def _load_registry() -> dict[str, VideoEntry]:
         entry = VideoEntry(
             id=v["id"],
             title=v["title"],
-            filename=v["filename"],
             url=v["url"],
-            language=v.get("language", "en"),
+            source_language=v.get("source_language", v.get("language", "en")),
             target_language=v.get("target_language", "es"),
         )
         entries[entry.id] = entry
@@ -54,7 +52,7 @@ def get_video(video_id: str) -> VideoEntry | None:
     return _load_registry().get(video_id)
 
 
-def resolve_filename(video_id: str) -> str | None:
-    """Return the filename stem for a video ID, or None if not registered."""
+def resolve_title(video_id: str) -> str | None:
+    """Return the title stem for a video ID, or None if not registered."""
     entry = get_video(video_id)
-    return entry.filename if entry else None
+    return entry.title if entry else None

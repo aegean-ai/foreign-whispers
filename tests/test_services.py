@@ -32,10 +32,10 @@ class TestDownloadService:
 
         svc = DownloadService(ui_dir=tmp_path)
         with patch("api.src.services.download_service.dv_download_video") as mock:
-            mock.return_value = str(tmp_path / "raw_video" / "Test.mp4")
-            result = svc.download_video("https://youtube.com/watch?v=abc123", str(tmp_path / "raw_video"))
+            mock.return_value = str(tmp_path / "videos" / "Test.mp4")
+            result = svc.download_video("https://youtube.com/watch?v=abc123", str(tmp_path / "videos"))
 
-        mock.assert_called_once_with("https://youtube.com/watch?v=abc123", str(tmp_path / "raw_video"))
+        mock.assert_called_once_with("https://youtube.com/watch?v=abc123", str(tmp_path / "videos"))
         assert result.endswith("Test.mp4")
 
     def test_download_caption_delegates(self, tmp_path):
@@ -43,10 +43,10 @@ class TestDownloadService:
 
         svc = DownloadService(ui_dir=tmp_path)
         with patch("api.src.services.download_service.dv_download_caption") as mock:
-            mock.return_value = str(tmp_path / "raw_caption" / "Test.txt")
-            result = svc.download_caption("https://youtube.com/watch?v=abc123", str(tmp_path / "raw_caption"))
+            mock.return_value = str(tmp_path / "youtube_captions" / "Test.txt")
+            result = svc.download_caption("https://youtube.com/watch?v=abc123", str(tmp_path / "youtube_captions"))
 
-        mock.assert_called_once_with("https://youtube.com/watch?v=abc123", str(tmp_path / "raw_caption"))
+        mock.assert_called_once_with("https://youtube.com/watch?v=abc123", str(tmp_path / "youtube_captions"))
         assert result.endswith("Test.txt")
 
     def test_read_caption_segments(self, tmp_path):
@@ -111,7 +111,7 @@ class TestTranscriptionService:
         from api.src.services.transcription_service import TranscriptionService
 
         svc = TranscriptionService(ui_dir=tmp_path, whisper_model=MagicMock())
-        video_dir = tmp_path / "raw_video"
+        video_dir = tmp_path / "videos"
         video_dir.mkdir()
         (video_dir / "Some Title.mp4").write_bytes(b"fake")
 
@@ -122,7 +122,7 @@ class TestTranscriptionService:
         from api.src.services.transcription_service import TranscriptionService
 
         svc = TranscriptionService(ui_dir=tmp_path, whisper_model=MagicMock())
-        video_dir = tmp_path / "raw_video"
+        video_dir = tmp_path / "videos"
         video_dir.mkdir()
 
         title = svc.title_for_video_id("abc123", video_dir)
@@ -217,8 +217,8 @@ class TestTTSService:
         from api.src.services.tts_service import TTSService
 
         svc = TTSService(ui_dir=tmp_path, tts_engine=MagicMock())
-        trans_dir = tmp_path / "translated_transcription"
-        trans_dir.mkdir()
+        trans_dir = tmp_path / "translations" / "argos"
+        trans_dir.mkdir(parents=True)
         (trans_dir / "My Video.json").write_text('{"text":"hola"}')
 
         title = svc.title_for_video_id("abc123", trans_dir)
@@ -253,7 +253,7 @@ class TestStitchService:
         from api.src.services.stitch_service import StitchService
 
         svc = StitchService(ui_dir=tmp_path)
-        video_dir = tmp_path / "raw_video"
+        video_dir = tmp_path / "videos"
         video_dir.mkdir()
         (video_dir / "Some Title.mp4").write_bytes(b"fake")
 

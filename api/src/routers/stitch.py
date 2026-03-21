@@ -73,8 +73,8 @@ def _compute_speech_offset(title: str) -> float:
     YouTube captions have accurate start times (e.g. 4.8s into the video),
     while Whisper starts at 0.0s. Returns the offset to add to Whisper timestamps.
     """
-    yt_path = settings.data_dir / "raw_caption" / f"{title}.txt"
-    whisper_path = settings.data_dir / "raw_transcription" / f"{title}.json"
+    yt_path = settings.youtube_captions_dir / f"{title}.txt"
+    whisper_path = settings.transcriptions_dir / f"{title}.json"
 
     if not yt_path.exists() or not whisper_path.exists():
         return 0.0
@@ -103,13 +103,13 @@ async def get_captions(video_id: str):
     if title is None:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
 
-    vtt_dir = settings.data_dir / "translated_captions"
+    vtt_dir = settings.dubbed_captions_dir
     vtt_path = vtt_dir / f"{title}.vtt"
 
     if vtt_path.exists():
         return PlainTextResponse(vtt_path.read_text(), media_type="text/vtt")
 
-    json_path = settings.data_dir / "translated_transcription" / f"{title}.json"
+    json_path = settings.translations_dir / f"{title}.json"
     if not json_path.exists():
         raise HTTPException(status_code=404, detail="Translated captions not found")
 
@@ -166,40 +166,33 @@ async def get_original_captions(video_id: str):
     if title is None:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
 
-    vtt_dir = settings.data_dir / "original_captions"
-    vtt_path = vtt_dir / f"{title}.vtt"
-
-    # 1. Serve existing VTT
-    if vtt_path.exists():
-        return PlainTextResponse(vtt_path.read_text(), media_type="text/vtt")
-
-    # 2. Generate from YouTube captions (most accurate timestamps)
-    yt_caption_path = settings.data_dir / "raw_caption" / f"{title}.txt"
+    # 1. Generate from YouTube captions (most accurate timestamps)
+    yt_caption_path = settings.youtube_captions_dir / f"{title}.txt"
     if yt_caption_path.exists():
         vtt = _youtube_captions_to_vtt(yt_caption_path)
-        vtt_dir.mkdir(parents=True, exist_ok=True)
-        vtt_path.write_text(vtt)
         return PlainTextResponse(vtt, media_type="text/vtt")
 
-    # 3. Fall back to Whisper transcription
-    return _serve_captions(
-        vtt_dir=vtt_dir,
-        json_fallback_dir=settings.data_dir / "raw_transcription",
-        video_id=video_id,
+    # 2. Fall back to Whisper transcription
+    whisper_path = settings.transcriptions_dir / f"{title}.json"
+    if not whisper_path.exists():
+        raise HTTPException(status_code=404, detail="No captions available")
+    data = json.loads(whisper_path.read_text())
+    return PlainTextResponse(
+        _segments_to_vtt(data.get("segments", [])), media_type="text/vtt",
     )
 
 
 @router.post("/stitch/{video_id}")
 async def stitch_endpoint(
     video_id: str,
-    config: str = Query("default", pattern=r"^(default|c-[0-9a-f]{7})$"),
+    config: str = Query(..., pattern=r"^c-[0-9a-f]{7}$"),
 ):
     """Replace video audio with dubbed TTS audio.
 
     *config* selects which TTS audio to use (opaque directory name).
     """
-    raw_video_dir = settings.data_dir / "raw_video"
-    output_dir = settings.data_dir / "translated_video" / config
+    videos_dir = settings.videos_dir
+    output_dir = settings.dubbed_videos_dir / config
     output_dir.mkdir(parents=True, exist_ok=True)
 
     title = resolve_title(video_id)
@@ -211,12 +204,9 @@ async def stitch_endpoint(
     if output_path.exists():
         return {"video_id": video_id, "video_path": str(output_path), "config": config}
 
-    video_path = str(raw_video_dir / f"{title}.mp4")
+    video_path = str(videos_dir / f"{title}.mp4")
 
-    # Config-specific audio dir, fall back to legacy flat dir
-    audio_path = settings.data_dir / "translated_audio" / config / f"{title}.wav"
-    if not audio_path.exists():
-        audio_path = settings.data_dir / "translated_audio" / f"{title}.wav"
+    audio_path = settings.tts_audio_dir / config / f"{title}.wav"
 
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(
@@ -278,16 +268,14 @@ def _serve_video(file_path: pathlib.Path, request: Request):
 async def get_video(
     video_id: str,
     request: Request,
-    config: str = Query("default", pattern=r"^(default|c-[0-9a-f]{7})$"),
+    config: str = Query(..., pattern=r"^c-[0-9a-f]{7}$"),
 ):
     """Stream the dubbed MP4."""
     title = resolve_title(video_id)
     if title is None:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
 
-    video_path = settings.data_dir / "translated_video" / config / f"{title}.mp4"
-    if not video_path.exists():
-        video_path = settings.data_dir / "translated_video" / f"{title}.mp4"
+    video_path = settings.dubbed_videos_dir / config / f"{title}.mp4"
     if not video_path.exists():
         raise HTTPException(status_code=404, detail="Dubbed video not yet generated")
 
@@ -301,7 +289,7 @@ async def get_original_video(video_id: str, request: Request):
     if title is None:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
 
-    video_path = settings.data_dir / "raw_video" / f"{title}.mp4"
+    video_path = settings.videos_dir / f"{title}.mp4"
     if not video_path.exists():
         raise HTTPException(status_code=404, detail="Original video not found")
 

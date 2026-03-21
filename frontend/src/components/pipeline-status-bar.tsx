@@ -5,9 +5,9 @@ import type { PipelineState, PipelineStage } from "@/lib/types";
 
 const STAGE_MESSAGES: Record<PipelineStage, string> = {
   download: "Downloading video and captions from YouTube...",
-  transcribe: "Running Whisper large-v3 speech-to-text (this may take a while for long videos)...",
-  translate: "Translating English to Spanish via argostranslate...",
-  tts: "Synthesizing Spanish speech via XTTS v2...",
+  transcribe: "Running faster-whisper-medium speech-to-text (this may take a while for long videos)...",
+  translate: "Translating source → target language via argostranslate...",
+  tts: "Synthesizing target-language speech via XTTS v2...",
   stitch: "Stitching audio, video, and subtitles with ffmpeg...",
 };
 

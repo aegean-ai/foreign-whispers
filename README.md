@@ -46,17 +46,14 @@ flowchart LR
 
 ## Quick Start
 
-Three hardware profiles are available via Docker Compose:
+Two profiles are available via Docker Compose:
 
 ```bash
-# NVIDIA GPU — Whisper + XTTS on GPU, full pipeline
+# NVIDIA GPU — Whisper + XTTS on dedicated GPU containers
 docker compose --profile nvidia up -d
 
-# x86 CPU — all inference on CPU (slower)
+# CPU only — no GPU containers (STT/TTS must be provided externally)
 docker compose --profile cpu up -d
-
-# Apple Silicon — CPU with MPS fallback
-docker compose --profile apple up -d
 ```
 
 Open **http://localhost:8501** in your browser.
@@ -65,18 +62,18 @@ Open **http://localhost:8501** in your browser.
 
 | Stage | What it does | Output |
 |-------|-------------|--------|
-| **Download** | Fetch video + captions from YouTube via yt-dlp | `pipeline_data/raw_video/`, `raw_caption/` |
-| **Transcribe** | Speech-to-text via Whisper | `pipeline_data/raw_transcription/` |
-| **Translate** | Source → target language via argostranslate (offline, OpenNMT) | `pipeline_data/translated_transcription/` |
-| **Synthesize Speech** | TTS via XTTS v2 (GPU) or Coqui (CPU fallback), time-aligned to original segments | `pipeline_data/translated_audio/` |
-| **Render Dubbed Video** | Replace audio track via ffmpeg remux (no re-encoding) | `pipeline_data/translated_video/` |
+| **Download** | Fetch video + captions from YouTube via yt-dlp | `videos/`, `youtube_captions/` |
+| **Transcribe** | Speech-to-text via Whisper | `transcriptions/whisper/` |
+| **Translate** | Source → target language via argostranslate (offline, OpenNMT) | `translations/argos/` |
+| **Synthesize Speech** | TTS via XTTS v2 (GPU) or Coqui (CPU fallback), time-aligned to original segments | `tts_audio/xtts-v2/` |
+| **Render Dubbed Video** | Replace audio track via ffmpeg remux (no re-encoding) | `dubbed_videos/` |
 
 Captions are served as WebVTT via the `<track>` element — no subtitle burn-in:
 
 | Endpoint | Source | Output |
 |----------|--------|--------|
-| `GET /api/captions/{id}/original` | YouTube captions (accurate timestamps) | `pipeline_data/original_captions/*.vtt` |
-| `GET /api/captions/{id}` | Translated segments + YouTube timing offset | `pipeline_data/translated_captions/*.vtt` |
+| `GET /api/captions/{id}/original` | YouTube captions (generated on the fly) | — |
+| `GET /api/captions/{id}` | Translated segments + YouTube timing offset | `dubbed_captions/*.vtt` |
 
 ## Project Structure
 
@@ -104,6 +101,18 @@ foreign-whispers/
 ├── tts_es.py                    # XTTS client + time-aligned TTS generation
 ├── translated_output.py         # ffmpeg audio remux + legacy subtitle compositing
 ├── pipeline_data/               # All intermediate and output files (volume-mounted)
+│   └── api/
+│       ├── videos/              # Downloaded source MP4s
+│       ├── youtube_captions/    # Line-delimited JSON from yt-dlp
+│       ├── transcriptions/
+│       │   └── whisper/         # Whisper output JSON
+│       ├── translations/
+│       │   └── argos/           # argostranslate output JSON
+│       ├── tts_audio/
+│       │   └── xtts-v2/         # TTS WAV files per config
+│       ├── dubbed_captions/     # Target-language VTT
+│       ├── dubbed_videos/       # Final dubbed MP4s per config
+│       └── speakers/            # Reference voice clips
 ├── docker-compose.yml           # Profiles: nvidia, cpu, apple
 ├── Dockerfile                   # Multi-stage: cpu and gpu targets
 └── docs/
@@ -161,7 +170,7 @@ inside the container.
 3. **Restart the API container** to pick up changes:
 
    ```bash
-   docker compose --profile nvidia restart api-gpu
+   docker compose --profile nvidia restart api
    ```
 
    To avoid manual restarts, add `--reload` to the uvicorn command in
@@ -212,7 +221,7 @@ Then select the **foreign-whispers** kernel in VS Code's kernel picker.
 | Change | Action needed |
 |--------|--------------|
 | Edit `foreign_whispers/*.py` or `api/**/*.py` | Restart API container (or use `--reload`) |
-| Edit `pyproject.toml` / add dependencies | `docker compose --profile nvidia build api-gpu && docker compose --profile nvidia up -d api-gpu` |
+| Edit `pyproject.toml` / add dependencies | `docker compose --profile nvidia build api && docker compose --profile nvidia up -d api` |
 | Edit `frontend/` | Frontend has its own hot-reload; no action needed |
 | Edit `docker-compose.yml` | `docker compose --profile nvidia up -d` (re-creates changed services) |
 

@@ -24,11 +24,47 @@ class Settings(BaseSettings):
     whisper_backend: str = "local"
     tts_backend: str = "local"
 
+    # Model directory names — change these when swapping backends
+    stt_model_dir: str = "whisper"
+    translation_model_dir: str = "argos"
+    tts_model_dir: str = "xtts-v2"
+
     # File paths
     base_dir: Path = Path(__file__).resolve().parent.parent.parent.parent
     data_dir: Path = base_dir / "pipeline_data" / "api"
     # Legacy alias — kept for backwards compatibility with volume mounts
     ui_dir: Path = data_dir
+
+    # ── pipeline directory layout ───────────────────────────────────────
+    # Centralised here so a rename is a one-line change.
+
+    @property
+    def videos_dir(self) -> Path:
+        return self.data_dir / "videos"
+
+    @property
+    def youtube_captions_dir(self) -> Path:
+        return self.data_dir / "youtube_captions"
+
+    @property
+    def transcriptions_dir(self) -> Path:
+        return self.data_dir / "transcriptions" / self.stt_model_dir
+
+    @property
+    def translations_dir(self) -> Path:
+        return self.data_dir / "translations" / self.translation_model_dir
+
+    @property
+    def tts_audio_dir(self) -> Path:
+        return self.data_dir / "tts_audio" / self.tts_model_dir
+
+    @property
+    def dubbed_videos_dir(self) -> Path:
+        return self.data_dir / "dubbed_videos"
+
+    @property
+    def dubbed_captions_dir(self) -> Path:
+        return self.data_dir / "dubbed_captions"
 
     # S3 storage
     s3_bucket: str = ""

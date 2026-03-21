@@ -17,7 +17,33 @@ Usage::
 
 from __future__ import annotations
 
+import json as _json
+
 import requests
+
+
+def _djb2(s: str) -> str:
+    """DJB2 hash — mirrors frontend/src/lib/config-id.ts."""
+    h = 5381
+    for ch in s:
+        h = ((h << 5) + h + ord(ch)) & 0xFFFFFFFF
+    return format(h, "07x")[:7]
+
+
+def config_id(dubbing: str = "baseline") -> str:
+    """Compute the opaque config directory name for a dubbing mode.
+
+    >>> config_id("baseline")
+    'c-fb1074a'
+    >>> config_id("aligned")
+    'c-86ab861'
+    """
+    return "c-" + _djb2(_json.dumps({"d": dubbing}, separators=(",", ":")))
+
+
+# Pre-computed for convenience
+BASELINE = config_id("baseline")
+ALIGNED = config_id("aligned")
 
 
 class FWClient:
@@ -79,7 +105,7 @@ class FWClient:
     def tts(
         self,
         video_id: str,
-        config: str = "default",
+        config: str = BASELINE,
         alignment: bool = False,
     ) -> dict:
         """Synthesize TTS audio for the translated transcript.
@@ -91,7 +117,7 @@ class FWClient:
             params={"config": config, "alignment": str(alignment).lower()},
         )
 
-    def stitch(self, video_id: str, config: str = "default") -> dict:
+    def stitch(self, video_id: str, config: str = BASELINE) -> dict:
         """Replace video audio with dubbed TTS audio.
 
         Returns ``{video_id, video_path, config}``.
@@ -125,7 +151,7 @@ class FWClient:
     def run_pipeline(
         self,
         url: str,
-        config: str = "default",
+        config: str = BASELINE,
         alignment: bool = False,
     ) -> dict:
         """Run the full pipeline: download → transcribe → translate → TTS → stitch.

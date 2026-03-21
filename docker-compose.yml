@@ -56,74 +56,25 @@ services:
               count: all
               capabilities: [gpu]
 
-  # ── API — NVIDIA GPU profile ────────────────────────────────────────
-  api-gpu:
+  # ── API (CPU orchestrator) — all profiles ─────────────────────────
+  # The API container is CPU-only. It delegates GPU work to the STT
+  # and TTS containers above via HTTP.
+  api:
     container_name: foreign-whispers-api
-    profiles: [nvidia]
+    profiles: [nvidia, cpu]
     build:
       context: .
       dockerfile: Dockerfile
-      target: gpu
+      args:
+        USER_UID: "${UID:-1000}"
+        USER_GID: "${GID:-1000}"
     restart: unless-stopped
-    user: "${UID:-1000}:${GID:-1000}"
     network_mode: host
     command: ["uv", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8080"]
     environment:
       - XTTS_API_URL=http://localhost:8020
       - FW_WHISPER_MODEL=base
       - FW_TTS_MODEL_NAME=tts_models/es/css10/vits
-      # FW_USE_GPU_ENCODE requires ffmpeg built with nvenc + nvidia runtime
-      # - FW_USE_GPU_ENCODE=1
-    volumes:
-      - ./pipeline_data:/app/pipeline_data
-      - ./foreign_whispers:/app/foreign_whispers
-      - ./api:/app/api
-      - ./cookies.txt:/app/cookies.txt
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
-  # ── API — x86 CPU profile ──────────────────────────────────────────
-  api-cpu:
-    container_name: foreign-whispers-api
-    profiles: [cpu]
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: cpu
-    restart: unless-stopped
-    user: "${UID:-1000}:${GID:-1000}"
-    network_mode: host
-    command: ["uv", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8080"]
-    environment:
-      - FW_WHISPER_MODEL=base
-      - FW_TTS_MODEL_NAME=tts_models/es/css10/vits
-    volumes:
-      - ./pipeline_data:/app/pipeline_data
-      - ./foreign_whispers:/app/foreign_whispers
-      - ./api:/app/api
-      - ./cookies.txt:/app/cookies.txt
-
-  # ── API — Apple Silicon profile ────────────────────────────────────
-  api-apple:
-    container_name: foreign-whispers-api
-    profiles: [apple]
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: cpu
-    restart: unless-stopped
-    user: "${UID:-1000}:${GID:-1000}"
-    network_mode: host
-    command: ["uv", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8080"]
-    environment:
-      - FW_WHISPER_MODEL=base
-      - FW_TTS_MODEL_NAME=tts_models/es/css10/vits
-      - PYTORCH_ENABLE_MPS_FALLBACK=1
     volumes:
       - ./pipeline_data:/app/pipeline_data
       - ./foreign_whispers:/app/foreign_whispers
@@ -133,7 +84,7 @@ services:
   # ── Frontend (Next.js) — all profiles ──────────────────────────────
   frontend:
     container_name: foreign-whispers-frontend
-    profiles: [nvidia, cpu, apple]
+    profiles: [nvidia, cpu]
     build:
       context: ./frontend
       dockerfile: Dockerfile

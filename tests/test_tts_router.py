@@ -10,8 +10,8 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture()
 def ui_dir(tmp_path):
-    for sub in ("translated_transcription", "translated_audio"):
-        (tmp_path / sub).mkdir()
+    (tmp_path / "translations" / "argos").mkdir(parents=True)
+    (tmp_path / "tts_audio" / "xtts-v2").mkdir(parents=True)
     return tmp_path
 
 
@@ -42,7 +42,7 @@ def _translated_transcript():
 
 def test_tts_returns_audio_path(client, monkeypatch, ui_dir):
     """POST /api/tts/{video_id}?config=...&alignment=... returns path to generated WAV."""
-    src = ui_dir / "translated_transcription" / "Test Title.json"
+    src = ui_dir / "translations" / "argos" / "Test Title.json"
     src.write_text(json.dumps(_translated_transcript()))
 
     monkeypatch.setattr(
@@ -71,7 +71,7 @@ def test_tts_skips_if_cached(client, monkeypatch, ui_dir):
         lambda video_id: "Test Title",
     )
 
-    config_dir = ui_dir / "translated_audio" / "c-0000000"
+    config_dir = ui_dir / "tts_audio" / "xtts-v2" / "c-0000000"
     config_dir.mkdir(parents=True)
     wav = config_dir / "Test Title.wav"
     wav.write_bytes(b"RIFF" + b"\x00" * 100)
@@ -101,7 +101,7 @@ def test_tts_source_not_found(client, monkeypatch, ui_dir):
 
 def test_tts_runs_in_threadpool(client, monkeypatch, ui_dir):
     """TTS should run via run_in_executor to avoid blocking the event loop."""
-    src = ui_dir / "translated_transcription" / "Test Title.json"
+    src = ui_dir / "translations" / "argos" / "Test Title.json"
     src.write_text(json.dumps(_translated_transcript()))
 
     monkeypatch.setattr(

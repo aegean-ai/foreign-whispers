@@ -260,14 +260,16 @@ def text_to_speech(text, output_file_path):
 
 
 def _load_en_transcript(es_source_path: str) -> dict:
-    """Locate the English transcript that corresponds to the ES source file.
+    """Locate the source-language transcript that corresponds to the translated file.
 
-    Convention: ES JSON lives at .../translated_transcription/<title>.json
-    English JSON lives at .../raw_transcription/<title>.json
-    Returns an empty dict (no segments) if the EN file is not found.
+    Convention: translated JSON lives at .../translations/{model}/<title>.json
+    Source transcript lives at .../transcriptions/{model}/<title>.json
+    Returns an empty dict (no segments) if the source file is not found.
     """
     es_path = pathlib.Path(es_source_path)
-    en_path = es_path.parent.parent / "raw_transcription" / es_path.name
+    # Navigate: translations/{model}/ → data_dir → transcriptions/whisper/
+    data_dir = es_path.parent.parent.parent
+    en_path = data_dir / "transcriptions" / "whisper" / es_path.name
     if not en_path.exists():
         print(f"[tts_es] EN transcript not found at {en_path}, alignment skipped")
         return {}
@@ -350,10 +352,11 @@ def _compute_speech_offset(source_path: str) -> float:
     the actual speech start in the original video.
     """
     title = pathlib.Path(source_path).stem
-    base_dir = pathlib.Path(source_path).parent.parent
+    # source_path: .../translations/{model}/{title}.json → data_dir is 3 levels up
+    base_dir = pathlib.Path(source_path).parent.parent.parent
 
-    yt_path = base_dir / "raw_caption" / f"{title}.txt"
-    whisper_path = base_dir / "raw_transcription" / f"{title}.json"
+    yt_path = base_dir / "youtube_captions" / f"{title}.txt"
+    whisper_path = base_dir / "transcriptions" / "whisper" / f"{title}.json"
 
     if not yt_path.exists() or not whisper_path.exists():
         return 0.0

@@ -9,9 +9,9 @@ import pytest
 
 
 def _write_minimal_transcripts(tmp_path, title="vid"):
-    es_dir = tmp_path / "translated_transcription"
-    en_dir = tmp_path / "raw_transcription"
-    es_dir.mkdir(); en_dir.mkdir()
+    es_dir = tmp_path / "translations" / "argos"
+    en_dir = tmp_path / "transcriptions" / "whisper"
+    es_dir.mkdir(parents=True, exist_ok=True); en_dir.mkdir(parents=True, exist_ok=True)
     seg = {"start": 0.0, "end": 3.0, "text": "Hola mundo"}
     en_seg = {"start": 0.0, "end": 3.0, "text": "Hello world"}
     (es_dir / f"{title}.json").write_text(

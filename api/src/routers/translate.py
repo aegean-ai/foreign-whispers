@@ -20,8 +20,8 @@ async def translate_endpoint(
     target_language: str = Query(default="es"),
 ):
     """Translate a single video's transcript (fixes issue 5ss — no directory sweep)."""
-    raw_dir = settings.data_dir / "raw_transcription"
-    out_dir = settings.data_dir / "translated_transcription"
+    raw_dir = settings.transcriptions_dir
+    out_dir = settings.translations_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
     title = resolve_title(video_id)

@@ -25,7 +25,7 @@ async def _run_in_threadpool(executor, fn, *args, **kwargs):
 async def tts_endpoint(
     video_id: str,
     request: Request,
-    config: str = Query("default", pattern=r"^(default|c-[0-9a-f]{7})$"),
+    config: str = Query(..., pattern=r"^c-[0-9a-f]{7}$"),
     alignment: bool = Query(False),
 ):
     """Generate TTS audio for a translated transcript.
@@ -33,8 +33,8 @@ async def tts_endpoint(
     *config* is an opaque directory name for caching.
     *alignment* enables temporal alignment (clamped stretch).
     """
-    trans_dir = settings.data_dir / "translated_transcription"
-    audio_dir = settings.data_dir / "translated_audio" / config
+    trans_dir = settings.translations_dir
+    audio_dir = settings.tts_audio_dir / config
     audio_dir.mkdir(parents=True, exist_ok=True)
 
     svc = TTSService(
@@ -71,17 +71,14 @@ async def tts_endpoint(
 @router.get("/audio/{video_id}")
 async def get_audio(
     video_id: str,
-    config: str = Query("default", pattern=r"^(default|c-[0-9a-f]{7})$"),
+    config: str = Query(..., pattern=r"^c-[0-9a-f]{7}$"),
 ):
     """Stream the TTS-synthesized WAV audio."""
     title = resolve_title(video_id)
     if title is None:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found in index")
 
-    # Config-specific dir first, then legacy flat dir for backwards compat
-    audio_path = settings.data_dir / "translated_audio" / config / f"{title}.wav"
-    if not audio_path.exists():
-        audio_path = settings.data_dir / "translated_audio" / f"{title}.wav"
+    audio_path = settings.tts_audio_dir / config / f"{title}.wav"
     if not audio_path.exists():
         raise HTTPException(status_code=404, detail="Audio file not found")
 

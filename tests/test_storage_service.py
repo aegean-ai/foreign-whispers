@@ -12,20 +12,20 @@ class TestLocalStorageBackend:
         from api.src.services.storage_service import LocalStorageBackend
 
         backend = LocalStorageBackend(base_dir=tmp_path)
-        key = "raw_video/test.mp4"
+        key = "videos/test.mp4"
         data = b"fake video bytes"
 
         result = backend.save(key, data)
 
         assert result == key
-        assert (tmp_path / "raw_video" / "test.mp4").exists()
-        assert (tmp_path / "raw_video" / "test.mp4").read_bytes() == data
+        assert (tmp_path / "videos" / "test.mp4").exists()
+        assert (tmp_path / "videos" / "test.mp4").read_bytes() == data
 
     def test_load_returns_bytes(self, tmp_path):
         from api.src.services.storage_service import LocalStorageBackend
 
         backend = LocalStorageBackend(base_dir=tmp_path)
-        key = "translated_audio/clip.wav"
+        key = "tts_audio/xtts-v2/clip.wav"
         data = b"audio data"
 
         backend.save(key, data)
@@ -37,24 +37,24 @@ class TestLocalStorageBackend:
         from api.src.services.storage_service import LocalStorageBackend
 
         backend = LocalStorageBackend(base_dir=tmp_path)
-        backend.save("raw_video/v.mp4", b"bytes")
+        backend.save("videos/v.mp4", b"bytes")
 
-        assert backend.exists("raw_video/v.mp4") is True
+        assert backend.exists("videos/v.mp4") is True
 
     def test_exists_false(self, tmp_path):
         from api.src.services.storage_service import LocalStorageBackend
 
         backend = LocalStorageBackend(base_dir=tmp_path)
 
-        assert backend.exists("raw_video/missing.mp4") is False
+        assert backend.exists("videos/missing.mp4") is False
 
     def test_get_url_returns_path(self, tmp_path):
         from api.src.services.storage_service import LocalStorageBackend
 
         backend = LocalStorageBackend(base_dir=tmp_path)
-        url = backend.get_url("raw_video/v.mp4")
+        url = backend.get_url("videos/v.mp4")
 
-        assert url == str(tmp_path / "raw_video" / "v.mp4")
+        assert url == str(tmp_path / "videos" / "v.mp4")
 
     def test_load_missing_raises(self, tmp_path):
         from api.src.services.storage_service import LocalStorageBackend
@@ -62,7 +62,7 @@ class TestLocalStorageBackend:
         backend = LocalStorageBackend(base_dir=tmp_path)
 
         with pytest.raises(FileNotFoundError):
-            backend.load("raw_video/nope.mp4")
+            backend.load("videos/nope.mp4")
 
 
 class TestS3StorageBackend:
@@ -86,7 +86,7 @@ class TestS3StorageBackend:
     def test_save_calls_put_object(self, mock_boto3):
         backend, mock_client = self._make_backend(mock_boto3)
         data = b"video bytes"
-        key = "foreign-whispers/abc123/raw_video/test.mp4"
+        key = "foreign-whispers/abc123/videos/test.mp4"
 
         result = backend.save(key, data)
 
@@ -104,11 +104,11 @@ class TestS3StorageBackend:
         mock_body.read.return_value = b"loaded bytes"
         mock_client.get_object.return_value = {"Body": mock_body}
 
-        result = backend.load("foreign-whispers/abc123/raw_video/test.mp4")
+        result = backend.load("foreign-whispers/abc123/videos/test.mp4")
 
         mock_client.get_object.assert_called_once_with(
             Bucket="test-bucket",
-            Key="foreign-whispers/abc123/raw_video/test.mp4",
+            Key="foreign-whispers/abc123/videos/test.mp4",
         )
         assert result == b"loaded bytes"
 
@@ -117,7 +117,7 @@ class TestS3StorageBackend:
         backend, mock_client = self._make_backend(mock_boto3)
         mock_client.head_object.return_value = {}
 
-        assert backend.exists("foreign-whispers/abc123/raw_video/test.mp4") is True
+        assert backend.exists("foreign-whispers/abc123/videos/test.mp4") is True
 
     @patch("api.src.services.storage_service.boto3")
     def test_exists_false_on_client_error(self, mock_boto3):
@@ -137,11 +137,11 @@ class TestS3StorageBackend:
     @patch("api.src.services.storage_service.boto3")
     def test_get_url_with_endpoint(self, mock_boto3):
         backend, _ = self._make_backend(mock_boto3)
-        key = "foreign-whispers/abc123/raw_video/test.mp4"
+        key = "foreign-whispers/abc123/videos/test.mp4"
 
         url = backend.get_url(key)
 
-        assert url == "http://localhost:9000/test-bucket/foreign-whispers/abc123/raw_video/test.mp4"
+        assert url == "http://localhost:9000/test-bucket/foreign-whispers/abc123/videos/test.mp4"
 
     @patch("api.src.services.storage_service.boto3")
     def test_get_url_without_endpoint(self, mock_boto3):
@@ -156,7 +156,7 @@ class TestS3StorageBackend:
             access_key="key",
             secret_key="secret",
         )
-        key = "foreign-whispers/abc123/raw_video/test.mp4"
+        key = "foreign-whispers/abc123/videos/test.mp4"
 
         url = backend.get_url(key)
 

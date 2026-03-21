@@ -33,9 +33,9 @@ async def eval_endpoint(video_id: str, request: EvalRequest = EvalRequest()):
     if title is None:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
 
-    en_dir  = settings.data_dir / "raw_transcription"
-    es_dir  = settings.data_dir / "translated_transcription"
-    raw_dir = settings.data_dir / "raw_videos"
+    en_dir  = settings.transcriptions_dir
+    es_dir  = settings.translations_dir
+    raw_dir = settings.videos_dir
 
     en_transcript = _load_transcript(en_dir, title)
     es_transcript = _load_transcript(es_dir, title)
@@ -86,8 +86,8 @@ async def evaluate_endpoint(video_id: str):
     if title is None:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
 
-    en_dir = settings.data_dir / "raw_transcription"
-    es_dir = settings.data_dir / "translated_transcription"
+    en_dir = settings.transcriptions_dir
+    es_dir = settings.translations_dir
 
     en_transcript = _load_transcript(en_dir, title)
     es_transcript = _load_transcript(es_dir, title)

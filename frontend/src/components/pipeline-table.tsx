@@ -97,9 +97,9 @@ export function PipelineTable({ pipelineState, settings }: PipelineTableProps) {
       case "download":
         return pipelineState.videoId ?? "--";
       case "transcribe":
-        return "Whisper large-v3";
+        return "faster-whisper-medium";
       case "translate":
-        return "argostranslate (en → es)";
+        return "argostranslate";
       case "tts": {
         const parts: string[] = [];
         if (settings.dubbing.includes("aligned")) parts.push("Aligned");

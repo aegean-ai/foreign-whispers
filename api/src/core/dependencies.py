@@ -3,7 +3,7 @@
 from functools import lru_cache
 
 from api.src.core.config import Settings
-from api.src.core.video_registry import resolve_filename as resolve_title  # noqa: F401 — re-export
+from api.src.core.video_registry import resolve_title  # noqa: F401 — re-export
 from api.src.services.storage_service import StorageBackend, get_storage_backend
 
 

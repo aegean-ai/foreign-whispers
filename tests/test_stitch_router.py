@@ -10,13 +10,10 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture()
 def ui_dir(tmp_path):
-    for sub in (
-        "raw_video",
-        "translated_transcription",
-        "translated_audio",
-        "translated_video",
-    ):
-        (tmp_path / sub).mkdir()
+    (tmp_path / "videos").mkdir()
+    (tmp_path / "translations" / "argos").mkdir(parents=True)
+    (tmp_path / "tts_audio" / "xtts-v2").mkdir(parents=True)
+    (tmp_path / "dubbed_videos").mkdir()
     return tmp_path
 
 
@@ -38,8 +35,8 @@ def client(monkeypatch, ui_dir):
 
 def _setup_stitch_inputs(ui_dir, config="c-0000000"):
     """Create all prerequisite files for stitching."""
-    (ui_dir / "raw_video" / "Test Title.mp4").write_bytes(b"fake-video")
-    audio_dir = ui_dir / "translated_audio" / config
+    (ui_dir / "videos" / "Test Title.mp4").write_bytes(b"fake-video")
+    audio_dir = ui_dir / "tts_audio" / "xtts-v2" / config
     audio_dir.mkdir(parents=True, exist_ok=True)
     (audio_dir / "Test Title.wav").write_bytes(b"fake-audio")
     trans = {
@@ -47,7 +44,7 @@ def _setup_stitch_inputs(ui_dir, config="c-0000000"):
         "language": "es",
         "segments": [{"id": 0, "start": 0.0, "end": 2.5, "text": " Hola mundo"}],
     }
-    (ui_dir / "translated_transcription" / "Test Title.json").write_text(
+    (ui_dir / "translations" / "argos" / "Test Title.json").write_text(
         json.dumps(trans)
     )
 
@@ -87,7 +84,7 @@ def test_stitch_skips_if_cached(client, monkeypatch, ui_dir):
         _title_resolver,
     )
 
-    config_dir = ui_dir / "translated_video" / "c-0000000"
+    config_dir = ui_dir / "dubbed_videos" / "c-0000000"
     config_dir.mkdir(parents=True, exist_ok=True)
     (config_dir / "Test Title.mp4").write_bytes(b"fake-mp4")
 
@@ -123,7 +120,7 @@ def test_get_video_streams_mp4(client, monkeypatch, ui_dir):
         _title_resolver,
     )
 
-    config_dir = ui_dir / "translated_video" / "c-0000000"
+    config_dir = ui_dir / "dubbed_videos" / "c-0000000"
     config_dir.mkdir(parents=True, exist_ok=True)
     (config_dir / "Test Title.mp4").write_bytes(b"fake-mp4-content")
 
@@ -140,7 +137,7 @@ def test_get_video_falls_back_to_legacy_dir(client, monkeypatch, ui_dir):
         _title_resolver,
     )
 
-    (ui_dir / "translated_video" / "Test Title.mp4").write_bytes(b"legacy-mp4")
+    (ui_dir / "dubbed_videos" / "Test Title.mp4").write_bytes(b"legacy-mp4")
 
     resp = client.get("/api/video/G3Eup4mfJdA?config=c-0000000")
     assert resp.status_code == 200
