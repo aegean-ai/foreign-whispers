@@ -12,6 +12,7 @@ import {
 import {
   DownloadIcon,
   MicIcon,
+  UsersIcon,
   LanguagesIcon,
   Volume2Icon,
   ScissorsIcon,
@@ -28,6 +29,7 @@ const STAGES: {
 }[] = [
   { key: "download", label: "Download", icon: DownloadIcon, description: "Fetch video + captions from YouTube" },
   { key: "transcribe", label: "Transcribe", icon: MicIcon, description: "Speech-to-text via Whisper" },
+  { key: "diarize", label: "Diarize", icon: UsersIcon, description: "Detect speakers and assign speaker labels" },
   { key: "translate", label: "Translate", icon: LanguagesIcon, description: "English to Spanish translation" },
   { key: "tts", label: "TTS", icon: Volume2Icon, description: "Text-to-speech synthesis" },
   { key: "stitch", label: "Stitch", icon: ScissorsIcon, description: "Combine audio + video + subtitles" },
@@ -118,6 +120,10 @@ export function PipelineTable({ pipelineState, settings }: PipelineTableProps) {
       }
       case "stitch":
         return "ffmpeg + moviepy";
+      case "diarize":
+        return settings.diarization.length > 0
+          ? settings.diarization.join(", ")
+          : "pyannote speaker-diarization-3.1";
       default:
         return "--";
     }
