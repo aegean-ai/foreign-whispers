@@ -62,10 +62,12 @@ services:
         USER_UID: "${UID:-1000}"
         USER_GID: "${GID:-1000}"
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "8080:8080"
     command: ["uv", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8080"]
     environment:
-      - CHATTERBOX_API_URL=http://localhost:8020
+      - CHATTERBOX_API_URL=http://foreign-whispers-tts:8020
+      - FW_WHISPER_API_URL=http://foreign-whispers-stt:8000
       - FW_WHISPER_MODEL=base
     volumes:
       - ./pipeline_data:/app/pipeline_data
@@ -81,9 +83,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "8501:8501"
+    command: ["sh", "-c", "find /app -type f \\( -name '*.js' -o -name '*.json' \\) -exec sed -i 's|http://localhost:8080|http://foreign-whispers-api:8080|g' {} + && node /app/server.js"]
     environment:
-      - API_URL=http://localhost:8080
+      - API_URL=http://foreign-whispers-api:8080
       - HOSTNAME=0.0.0.0
       - PORT=8501
     healthcheck:
