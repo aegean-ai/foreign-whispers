@@ -1,5 +1,5 @@
 """Application settings loaded from environment variables."""
-
+import os
 from pathlib import Path
 
 from pydantic import model_validator
@@ -51,6 +51,10 @@ class Settings(BaseSettings):
         return self.data_dir / "transcriptions" / self.stt_model_dir
 
     @property
+    def diarizations_dir(self) -> Path:
+        return self.data_dir / "diarizations"
+
+    @property
     def translations_dir(self) -> Path:
         return self.data_dir / "translations" / self.translation_model_dir
 
@@ -95,10 +99,17 @@ class Settings(BaseSettings):
     model_config = {"env_prefix": "FW_"}
 
     @model_validator(mode="after")
-    def _sync_postgres_dsn_alias(self) -> "Settings":
-        """If database_url is empty but postgres_dsn was set, copy it over."""
+    def _sync_aliases(self) -> "Settings":
+        """Support both FW_* env vars and plain legacy names."""
         if not self.database_url and self.postgres_dsn:
             self.database_url = self.postgres_dsn
+
+        if not self.hf_token:
+            self.hf_token = os.getenv("HF_TOKEN", "")
+
+        if not self.logfire_write_token:
+            self.logfire_write_token = os.getenv("LOGFIRE_TOKEN", "")
+
         return self
 
 
