@@ -157,10 +157,80 @@ def get_shorter_translations(
     Returns:
         Empty list (stub).  Implement to return ``TranslationCandidate`` items.
     """
-    logger.info(
-        "get_shorter_translations called for %.1fs budget (%d chars baseline) — "
-        "returning empty list (student assignment stub).",
-        target_duration_s,
-        len(baseline_es),
-    )
-    return []
+    CHARS_PER_SECOND = 15.0
+    budget_chars = int(target_duration_s * CHARS_PER_SECOND)
+
+    candidates: list[TranslationCandidate] = []
+
+    if len(baseline_es) <= budget_chars:
+        return [TranslationCandidate(
+            text=baseline_es,
+            char_count=len(baseline_es),
+            brevity_rationale="Baseline fits budget",
+        )]
+
+    FILLER_REMOVALS = [
+        "en este momento", "en realidad", "de hecho", "por supuesto",
+        "básicamente", "simplemente", "literalmente", "evidentemente",
+    ]
+    CONTRACTIONS = {
+        "en este momento": "ahora",
+        "con el fin de": "para",
+        "a pesar de que": "aunque",
+        "debido a que": "porque",
+        "en lugar de": "en vez de",
+        "sin embargo": "pero",
+        "por lo tanto": "así",
+        "de todas formas": "igual",
+        "es decir": "o sea",
+    }
+
+    rule_text = baseline_es.lower()
+    for long, short in CONTRACTIONS.items():
+        rule_text = rule_text.replace(long, short)
+    for filler in FILLER_REMOVALS:
+        rule_text = rule_text.replace(filler, "").strip()
+    if rule_text:
+        rule_text = rule_text[0].upper() + rule_text[1:]
+    import re
+    rule_text = re.sub(r" +", " ", rule_text).strip()
+
+    if rule_text and rule_text != baseline_es:
+        candidates.append(TranslationCandidate(
+            text=rule_text,
+            char_count=len(rule_text),
+            brevity_rationale="Rule-based: filler removal + contractions",
+        ))
+
+    try:
+        import argostranslate.translate as _at
+        installed = _at.get_installed_languages()
+        src_lang = next((l for l in installed if l.code == "en"), None)
+        tgt_lang = next((l for l in installed if l.code == "es"), None)
+        if src_lang and tgt_lang:
+            translation = src_lang.get_translation(tgt_lang)
+            shortened_source = source_text
+            for sep in [", ", " and ", " but ", " which ", " that "]:
+                if sep in shortened_source:
+                    shortened_source = shortened_source.split(sep)[0]
+                    break
+            if shortened_source != source_text:
+                retranslated = translation.translate(shortened_source)
+                candidates.append(TranslationCandidate(
+                    text=retranslated,
+                    char_count=len(retranslated),
+                    brevity_rationale="argostranslate re-translation of shortened source",
+                ))
+    except Exception as e:
+        logger.warning("argostranslate re-translation failed: %s", e)
+    if not candidates or all(c.char_count > budget_chars for c in candidates):
+        truncated = baseline_es[:budget_chars].rsplit(" ", 1)[0] + "…"
+        candidates.append(TranslationCandidate(
+            text=truncated,
+            char_count=len(truncated),
+            brevity_rationale="Hard truncation to budget",
+        ))
+
+    candidates.sort(key=lambda c: c.char_count)
+    return candidates
+    

@@ -67,6 +67,7 @@ services:
     environment:
       - CHATTERBOX_API_URL=http://localhost:8020
       - FW_WHISPER_MODEL=base
+      - FW_HF_TOKEN=${FW_HF_TOKEN}
     volumes:
       - ./pipeline_data:/app/pipeline_data
       - ./foreign_whispers:/app/foreign_whispers
