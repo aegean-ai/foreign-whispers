@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     @property
     def dubbed_captions_dir(self) -> Path:
         return self.data_dir / "dubbed_captions"
+    
+    @property
+    def speaker_voices_dir(self) -> Path:
+        return self.data_dir.parent / "speakers"
 
     # S3 storage
     s3_bucket: str = ""
