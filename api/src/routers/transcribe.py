@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from api.src.core.config import settings
 from api.src.core.dependencies import resolve_title
+from api.src.inference import get_whisper_backend
 from api.src.main import get_whisper_model
 from api.src.schemas.transcribe import TranscribeResponse, TranscribeSegment
 from api.src.services.transcription_service import TranscriptionService
@@ -88,10 +89,18 @@ async def transcribe_endpoint(
                 skipped=True,
             )
 
-    # Run Whisper STT
+    # Run Whisper STT (in-process or remote HTTP / Torch bridge)
+    if settings.whisper_backend == "remote":
+        whisper_engine = get_whisper_backend(
+            "remote",
+            api_url=settings.whisper_api_url,
+        )
+    else:
+        whisper_engine = get_whisper_model(request.app)
+
     svc = TranscriptionService(
         ui_dir=settings.data_dir,
-        whisper_model=get_whisper_model(request.app),
+        whisper_model=whisper_engine,
     )
     video_path = videos_dir / f"{title}.mp4"
     result = svc.transcribe(str(video_path))

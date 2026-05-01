@@ -131,6 +131,12 @@ def _make_tts_engine():
     Tries Chatterbox with a real /v1/audio/speech test call
     to ensure the model is fully loaded before committing.
     """
+    skip_probe = os.getenv("FW_CHATTERBOX_SKIP_HEAVY_PROBE", "").lower() in ("1", "true", "yes")
+    if skip_probe:
+        client = ChatterboxClient()
+        print(f"[tts] Using Chatterbox-compatible server at {CHATTERBOX_API_URL} (probe skipped)")
+        return client
+
     try:
         client = ChatterboxClient()
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
