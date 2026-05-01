@@ -49,27 +49,6 @@ services:
               count: all
               capabilities: [gpu]
 
-  # ── Torch bridge — Slurm STT/TTS via SSH (optional) ───────────────
-  # Start with: docker compose --profile cpu --profile torch up -d
-  # Set in .env: FW_TORCH_SSH_USER, FW_TORCH_REMOTE_WORK_ROOT (absolute on Torch),
-  # FW_TORCH_SLURM_ACCOUNT, FW_TORCH_SSH_IDENTITY_FILE=/ssh/<key>, and point the API at
-  # FW_WHISPER_BACKEND=remote, FW_WHISPER_API_URL=http://torch-bridge:8787,
-  # CHATTERBOX_API_URL=http://torch-bridge:8787, FW_CHATTERBOX_SKIP_HEAVY_PROBE=1.
-  torch-bridge:
-    container_name: foreign-whispers-torch-bridge
-    profiles: [torch]
-    build:
-      context: .
-      dockerfile: torch_bridge/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "8787:8787"
-    env_file:
-      - .env
-    volumes:
-      - ${HOME}/.ssh:/ssh:ro
-      - ./torch_bridge/templates:/app/torch_bridge/templates:ro
-
   # ── API (CPU orchestrator) — all profiles ─────────────────────────
   # The API container is CPU-only. It delegates GPU work to the STT
   # and TTS containers above via HTTP.
@@ -83,8 +62,7 @@ services:
         USER_UID: "${UID:-1000}"
         USER_GID: "${GID:-1000}"
     restart: unless-stopped
-    ports:
-      - "8080:8080"
+    network_mode: host
     command: ["uv", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8080"]
     environment:
       - CHATTERBOX_API_URL=http://localhost:8020
@@ -103,10 +81,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     restart: unless-stopped
-    ports:
-      - "8501:8501"
+    network_mode: host
     environment:
-      - API_URL=http://api:8080
+      - API_URL=http://localhost:8080
       - HOSTNAME=0.0.0.0
       - PORT=8501
     healthcheck:
