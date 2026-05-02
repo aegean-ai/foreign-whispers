@@ -5,7 +5,13 @@ import subprocess
 
 import pytest
 
+requires_imagemagick = pytest.mark.skipif(
+    shutil.which("convert") is None,
+    reason="ImageMagick 'convert' not on PATH (optional on dev laptops; CI/Docker installs it)",
+)
 
+
+@requires_imagemagick
 def test_imagemagick_binary_discoverable():
     """ImageMagick 'convert' binary must be findable on the system PATH."""
     convert_path = shutil.which("convert")
@@ -16,6 +22,7 @@ def test_imagemagick_binary_discoverable():
     )
 
 
+@requires_imagemagick
 def test_moviepy_imagemagick_configured():
     """moviepy must be configured with a valid IMAGEMAGICK_BINARY."""
     from api.src.services.stitch_engine import _imagemagick_binary

@@ -26,6 +26,8 @@ def client(monkeypatch, ui_dir):
 
     monkeypatch.setattr(settings, "data_dir", ui_dir)
     monkeypatch.setattr(settings, "ui_dir", ui_dir)
+    # Tests must not inherit remote Speaches from developer .env
+    monkeypatch.setattr(settings, "whisper_backend", "local")
 
     from api.src.main import app
 
@@ -48,16 +50,16 @@ def test_transcribe_returns_segments(client, monkeypatch, ui_dir):
     # Create a fake video file matching the expected pattern
     (ui_dir / "videos" / "Test Title.mp4").write_bytes(b"fake-video")
 
-    # Mock title_for_video_id on the TranscriptionService class
     monkeypatch.setattr(
-        "api.src.services.transcription_service.TranscriptionService.title_for_video_id",
-        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
+        "api.src.routers.transcribe.resolve_title",
+        lambda video_id: "Test Title",
     )
 
-    # Mock whisper transcribe on the model stored in app.state
     from api.src.main import app
 
-    app.state.whisper_model.transcribe = MagicMock(return_value=_make_whisper_result())
+    mock_model = MagicMock()
+    mock_model.transcribe = MagicMock(return_value=_make_whisper_result())
+    app.state._whisper_model = mock_model
 
     resp = client.post("/api/transcribe/G3Eup4mfJdA")
     assert resp.status_code == 200
@@ -73,13 +75,15 @@ def test_transcribe_saves_json(client, monkeypatch, ui_dir):
     (ui_dir / "videos" / "Test Title.mp4").write_bytes(b"fake-video")
 
     monkeypatch.setattr(
-        "api.src.services.transcription_service.TranscriptionService.title_for_video_id",
-        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
+        "api.src.routers.transcribe.resolve_title",
+        lambda video_id: "Test Title",
     )
 
     from api.src.main import app
 
-    app.state.whisper_model.transcribe = MagicMock(return_value=_make_whisper_result())
+    mock_model = MagicMock()
+    mock_model.transcribe = MagicMock(return_value=_make_whisper_result())
+    app.state._whisper_model = mock_model
 
     client.post("/api/transcribe/G3Eup4mfJdA")
 
@@ -92,8 +96,8 @@ def test_transcribe_saves_json(client, monkeypatch, ui_dir):
 def test_transcribe_skips_if_cached(client, monkeypatch, ui_dir):
     """If transcription JSON already exists, don't re-run Whisper."""
     monkeypatch.setattr(
-        "api.src.services.transcription_service.TranscriptionService.title_for_video_id",
-        lambda self_or_vid, vid_or_dir, search_dir=None: "Test Title",
+        "api.src.routers.transcribe.resolve_title",
+        lambda video_id: "Test Title",
     )
 
     # Pre-populate cached transcription
@@ -102,18 +106,20 @@ def test_transcribe_skips_if_cached(client, monkeypatch, ui_dir):
 
     from api.src.main import app
 
-    app.state.whisper_model.transcribe = MagicMock()
+    mock_model = MagicMock()
+    mock_model.transcribe = MagicMock()
+    app.state._whisper_model = mock_model
 
     resp = client.post("/api/transcribe/G3Eup4mfJdA")
     assert resp.status_code == 200
-    app.state.whisper_model.transcribe.assert_not_called()
+    mock_model.transcribe.assert_not_called()
 
 
 def test_transcribe_video_not_found(client, monkeypatch, ui_dir):
-    """Returns 404 when video file doesn't exist."""
+    """Returns 404 when video id is unknown to the registry."""
     monkeypatch.setattr(
-        "api.src.services.transcription_service.TranscriptionService.title_for_video_id",
-        lambda self_or_vid, vid_or_dir, search_dir=None: None,
+        "api.src.routers.transcribe.resolve_title",
+        lambda video_id: None,
     )
 
     resp = client.post("/api/transcribe/NONEXISTENT")

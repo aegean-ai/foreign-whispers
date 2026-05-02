@@ -35,7 +35,7 @@ class TestDownloadService:
             mock.return_value = str(tmp_path / "videos" / "Test.mp4")
             result = svc.download_video("https://youtube.com/watch?v=abc123", str(tmp_path / "videos"))
 
-        mock.assert_called_once_with("https://youtube.com/watch?v=abc123", str(tmp_path / "videos"))
+        mock.assert_called_once_with("https://youtube.com/watch?v=abc123", str(tmp_path / "videos"), None)
         assert result.endswith("Test.mp4")
 
     def test_download_caption_delegates(self, tmp_path):
@@ -46,7 +46,7 @@ class TestDownloadService:
             mock.return_value = str(tmp_path / "youtube_captions" / "Test.txt")
             result = svc.download_caption("https://youtube.com/watch?v=abc123", str(tmp_path / "youtube_captions"))
 
-        mock.assert_called_once_with("https://youtube.com/watch?v=abc123", str(tmp_path / "youtube_captions"))
+        mock.assert_called_once_with("https://youtube.com/watch?v=abc123", str(tmp_path / "youtube_captions"), None)
         assert result.endswith("Test.txt")
 
     def test_read_caption_segments(self, tmp_path):
@@ -211,7 +211,13 @@ class TestTTSService:
         with patch("api.src.services.tts_service.tts_text_file_to_speech") as mock:
             svc.text_file_to_speech("/src/transcript.json", "/out/audio")
 
-        mock.assert_called_once_with("/src/transcript.json", "/out/audio", mock_engine)
+        mock.assert_called_once_with(
+            "/src/transcript.json",
+            "/out/audio",
+            mock_engine,
+            alignment=None,
+            per_speaker_voices=True,
+        )
 
     def test_title_for_video_id(self, tmp_path):
         from api.src.services.tts_service import TTSService

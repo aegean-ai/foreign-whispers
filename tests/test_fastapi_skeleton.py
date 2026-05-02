@@ -40,9 +40,9 @@ def test_openapi_schema(client):
     assert "/healthz" in schema["paths"]
 
 
-def test_models_loaded_in_app_state(client):
-    """Verify that lifespan loaded models into app.state."""
+def test_models_lazy_slots_in_app_state(client):
+    """Lifespan reserves private slots; models load on first use (see get_whisper_model)."""
     from api.src.main import app
 
-    assert hasattr(app.state, "whisper_model")
-    assert hasattr(app.state, "tts_model")
+    assert hasattr(app.state, "_whisper_model")
+    assert hasattr(app.state, "_tts_model")
