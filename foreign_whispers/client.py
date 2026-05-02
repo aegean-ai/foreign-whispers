@@ -60,7 +60,16 @@ class FWClient:
 
     def _post(self, path: str, **kwargs) -> dict:
         resp = self._session.post(self._url(path), **kwargs)
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except requests.HTTPError as err:
+            body = (resp.text or "").strip()
+            if body:
+                raise requests.HTTPError(
+                    f"{err}\n--- response body ---\n{body[:8000]}",
+                    response=resp,
+                ) from err
+            raise
         return resp.json()
 
     def _get_json(self, path: str, **kwargs) -> dict | list:
@@ -85,21 +94,53 @@ class FWClient:
         """
         return self._post("/api/download", json={"url": url})
 
-    def transcribe(self, video_id: str) -> dict:
+    def diarize(
+        self,
+        video_id: str,
+        *,
+        force: bool = False,
+        synthetic_speakers: int = 0,
+    ) -> dict:
+        """Run speaker diarization and merge ``speaker`` into the transcription JSON.
+
+        Use *synthetic_speakers* (≥2) when pyannote models are not yet accepted on
+        Hugging Face — segments get rotating ``SPEAKER_00`` … labels for multi-voice TTS.
+
+        Returns ``{video_id, speakers, segments, skipped?, synthetic?}``.
+        """
+        return self._post(
+            f"/api/diarize/{video_id}",
+            params={
+                "force": str(force).lower(),
+                "synthetic_speakers": synthetic_speakers,
+            },
+        )
+
+    def transcribe(self, video_id: str, *, use_youtube_captions: bool = True) -> dict:
         """Run Whisper STT on a downloaded video.
 
-        Returns ``{video_id, language, text, segments}``.
-        """
-        return self._post(f"/api/transcribe/{video_id}")
+        When *use_youtube_captions* is True (default), the API prefers YouTube
+        captions when available and may skip Whisper. Set to False to force
+        Whisper (e.g. to validate remote STT).
 
-    def translate(self, video_id: str, target_language: str = "es") -> dict:
+        Returns ``{video_id, language, text, segments, skipped?}``.
+        """
+        return self._post(
+            f"/api/transcribe/{video_id}",
+            params={"use_youtube_captions": str(use_youtube_captions).lower()},
+        )
+
+    def translate(self, video_id: str, target_language: str = "es", *, force: bool = False) -> dict:
         """Translate transcript from source language to target language.
+
+        Set *force* to True after diarization so Argos JSON is rebuilt with
+        ``speaker`` fields from the English transcript.
 
         Returns ``{video_id, target_language, text, segments}``.
         """
         return self._post(
             f"/api/translate/{video_id}",
-            params={"target_language": target_language},
+            params={"target_language": target_language, "force": str(force).lower()},
         )
 
     def tts(
@@ -153,6 +194,8 @@ class FWClient:
         url: str,
         config: str = BASELINE,
         alignment: bool = False,
+        *,
+        use_youtube_captions: bool = True,
     ) -> dict:
         """Run the full pipeline: download → transcribe → translate → TTS → stitch.
 
@@ -160,7 +203,7 @@ class FWClient:
         """
         dl = self.download(url)
         video_id = dl["video_id"]
-        tr = self.transcribe(video_id)
+        tr = self.transcribe(video_id, use_youtube_captions=use_youtube_captions)
         tl = self.translate(video_id)
         tts = self.tts(video_id, config=config, alignment=alignment)
         st = self.stitch(video_id, config=config)

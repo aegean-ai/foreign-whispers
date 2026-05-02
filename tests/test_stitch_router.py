@@ -130,18 +130,20 @@ def test_get_video_streams_mp4(client, monkeypatch, ui_dir):
     assert resp.content == b"fake-mp4-content"
 
 
-def test_get_video_falls_back_to_legacy_dir(client, monkeypatch, ui_dir):
-    """GET /api/video/{video_id}?config=... falls back to flat dir."""
+def test_get_video_from_config_subdir(client, monkeypatch, ui_dir):
+    """GET /api/video/{video_id}?config=... streams from ``dubbed_videos/{config}/``."""
     monkeypatch.setattr(
         "api.src.routers.stitch.resolve_title",
         _title_resolver,
     )
 
-    (ui_dir / "dubbed_videos" / "Test Title.mp4").write_bytes(b"legacy-mp4")
+    config_dir = ui_dir / "dubbed_videos" / "c-0000000"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "Test Title.mp4").write_bytes(b"config-subdir-mp4")
 
     resp = client.get("/api/video/G3Eup4mfJdA?config=c-0000000")
     assert resp.status_code == 200
-    assert resp.content == b"legacy-mp4"
+    assert resp.content == b"config-subdir-mp4"
 
 
 def test_get_video_not_found(client, monkeypatch, ui_dir):

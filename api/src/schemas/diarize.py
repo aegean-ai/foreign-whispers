@@ -14,3 +14,5 @@ class DiarizeResponse(BaseModel):
     speakers: list[str]
     segments: list[DiarizeSpeakerSegment]
     skipped: bool = False
+    #: True when ``synthetic_speakers`` fallback was used (no pyannote intervals).
+    synthetic: bool = False

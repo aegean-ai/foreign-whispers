@@ -1,6 +1,7 @@
 import type {
   DownloadResponse,
   TranscribeResponse,
+  DiarizeResponse,
   TranslateResponse,
   TTSResponse,
   StitchResponse,
@@ -39,6 +40,10 @@ export async function transcribeVideo(videoId: string, useYoutubeCaptions = true
   });
 }
 
+export async function diarizeVideo(videoId: string): Promise<DiarizeResponse> {
+  return fetchJson<DiarizeResponse>(`/api/diarize/${videoId}`, { method: "POST" });
+}
+
 export async function translateVideo(
   videoId: string,
   targetLanguage = "es"
@@ -52,10 +57,12 @@ export async function translateVideo(
 export async function synthesizeSpeech(
   videoId: string,
   config: string,
-  alignment: boolean = false
+  alignment: boolean = false,
+  perSpeakerVoice: boolean = true
 ): Promise<TTSResponse> {
+  const ps = perSpeakerVoice ? "true" : "false";
   return fetchJson<TTSResponse>(
-    `/api/tts/${videoId}?config=${config}&alignment=${alignment}`,
+    `/api/tts/${videoId}?config=${config}&alignment=${alignment}&per_speaker_voice=${ps}`,
     { method: "POST" }
   );
 }

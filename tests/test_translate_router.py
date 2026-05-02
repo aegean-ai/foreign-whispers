@@ -123,6 +123,36 @@ def test_translate_skips_if_cached(client, monkeypatch, ui_dir):
     assert translate_called["count"] == 0
 
 
+def test_translate_force_rewrites_cache(client, monkeypatch, ui_dir):
+    """force=true re-reads EN transcript and overwrites cached translation."""
+    _patch_resolve_title(monkeypatch)
+
+    src = ui_dir / "transcriptions" / "whisper" / "Test Title.json"
+    src.write_text(json.dumps(_fake_transcript()))
+
+    monkeypatch.setattr(
+        "api.src.services.translation_service.translate_sentence",
+        lambda text, fc, tc: text.upper(),
+    )
+    monkeypatch.setattr(
+        "api.src.services.translation_service.download_and_install_package",
+        lambda fc, tc: None,
+    )
+
+    client.post("/api/translate/G3Eup4mfJdA?target_language=es")
+
+    # EN transcript gains speaker labels (as after diarize)
+    enriched = _fake_transcript()
+    enriched["segments"][0]["speaker"] = "SPEAKER_01"
+    src.write_text(json.dumps(enriched))
+
+    resp = client.post("/api/translate/G3Eup4mfJdA?target_language=es&force=true")
+    assert resp.status_code == 200
+    seg0 = resp.json()["segments"][0]
+    assert seg0["text"] == " HELLO WORLD"
+    assert seg0.get("speaker") == "SPEAKER_01"
+
+
 def test_translate_source_not_found(client, monkeypatch, ui_dir):
     """Returns 404 when video is not in registry."""
     _patch_resolve_title(monkeypatch, title=None)

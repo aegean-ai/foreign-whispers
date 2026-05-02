@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from foreign_whispers.alignment import (
     AlignAction,
@@ -6,6 +8,7 @@ from foreign_whispers.alignment import (
     compute_segment_metrics,
     decide_action,
     global_align,
+    reset_tts_duration_predictor_cache,
 )
 
 
@@ -149,3 +152,62 @@ def test_global_align_gap_shift_accumulates_drift():
     aligned = global_align(metrics, silence_regions=silence)
     assert aligned[0].action == AlignAction.GAP_SHIFT
     assert aligned[1].scheduled_start > aligned[1].original_start
+
+
+@pytest.fixture(autouse=True)
+def _clear_fw_tts_model_env(monkeypatch):
+    """Keep segment tests deterministic (no stray env / bundled ridge on host)."""
+
+    monkeypatch.delenv("FW_TTS_DURATION_MODEL", raising=False)
+    reset_tts_duration_predictor_cache()
+    yield
+    reset_tts_duration_predictor_cache()
+
+
+def test_estimate_duration_trained_flat_model(monkeypatch, tmp_path):
+    from foreign_whispers.alignment import _estimate_duration
+
+    monkeypatch.delenv("FW_TTS_DURATION_MODEL_TESTS_USE_HEURISTIC_ONLY", raising=False)
+
+    blob = {
+        "version": 1,
+        "kind": "ridge_standard_scaled",
+        "feature_names": ["chars", "syllables", "words"],
+        "coef": [0.0, 0.0, 0.0],
+        "intercept": 2.25,
+        "mean": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0],
+        "min_duration_s": 0.05,
+        "max_duration_s": 600.0,
+    }
+    path = tmp_path / "dur.json"
+    path.write_text(json.dumps(blob))
+
+    monkeypatch.setenv("FW_TTS_DURATION_MODEL", str(path))
+    reset_tts_duration_predictor_cache()
+    assert _estimate_duration("hola mundo") == pytest.approx(2.25)
+
+
+def test_estimate_duration_empty_fallback_with_model(monkeypatch, tmp_path):
+    """Blank text skips the predictor and uses syllable heuristic (min 1 syl)."""
+
+    from foreign_whispers import alignment as al
+
+    monkeypatch.delenv("FW_TTS_DURATION_MODEL_TESTS_USE_HEURISTIC_ONLY", raising=False)
+
+    blob = {
+        "version": 1,
+        "kind": "ridge_standard_scaled",
+        "coef": [1.0, 0.0, 0.0],
+        "intercept": 0.0,
+        "mean": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0],
+        "min_duration_s": 0.05,
+        "max_duration_s": 600.0,
+    }
+    path = tmp_path / "dur.json"
+    path.write_text(json.dumps(blob))
+
+    monkeypatch.setenv("FW_TTS_DURATION_MODEL", str(path))
+    reset_tts_duration_predictor_cache()
+    assert al._estimate_duration("") == pytest.approx(1.0 / al._SYLLABLE_RATE)
