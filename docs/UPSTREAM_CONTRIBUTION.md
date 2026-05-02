@@ -6,17 +6,17 @@ https://github.com/aegean-ai/foreign-whispers
 ## One-time setup
 
 1. **Fork** the repository on GitHub (your account → Fork).
-2. Add your fork as a remote (replace `YOURUSER`):
+2. Add your fork as a remote (this clone already has `rushilara` as `fork`):
 
    ```bash
-   git remote add fork git@github.com:YOURUSER/foreign-whispers.git
+   git remote add fork git@github.com:rushilara/foreign-whispers.git
    ```
 
-3. Keep `origin` as the upstream course repo, or rename remotes to taste:
+3. Optional: rename remotes so `origin` is your fork:
 
    ```bash
    git remote rename origin upstream
-   git remote add origin git@github.com:YOURUSER/foreign-whispers.git
+   git remote rename fork origin
    ```
 
 ## Suggested GitHub issues (copy into GitHub → Issues → New)
@@ -48,10 +48,10 @@ Suggested **titles**:
 2. Cherry-pick or copy your commits, then:
 
    ```bash
-   git push -u origin feat/course-remote-gpu-docs
+   git push -u fork feat/course-remote-gpu-docs
    ```
 
-3. On GitHub: **Compare & pull request** from `YOURUSER:feat/course-remote-gpu-docs` → `aegean-ai:main`.
+3. On GitHub: **Compare & pull request** from `rushilara:feat/course-remote-gpu-docs` → `aegean-ai:main`.
 
 4. In the PR description, link the issues (`Closes #123` or `See #124`), summarize changes, and note anything that intentionally diverges from the assignment handout (see main **README.md** section “Implementation notes”).
 
@@ -59,7 +59,7 @@ Suggested **titles**:
 
 ```bash
 gh issue create --repo aegean-ai/foreign-whispers --title "..." --body-file docs/github-issue-remote-gpu.md
-gh pr create --repo aegean-ai/foreign-whispers --base main --head YOURUSER:feat/branch --fill
+gh pr create --repo aegean-ai/foreign-whispers --base main --head rushilara:feat/branch --fill
 ```
 
 You still need push access to **your fork**; you do **not** need push access to `aegean-ai` directly.
