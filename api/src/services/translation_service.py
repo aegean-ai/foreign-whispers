@@ -58,12 +58,16 @@ class TranslationService:
         the best fit.  Returns a deep copy of es_transcript; original is never
         mutated.
 
-        Note: get_shorter_translations() is a student assignment stub that
-        currently returns an empty list — so this method is a no-op until
-        the stub is implemented.
+        Note: when ``get_shorter_translations()`` returns no candidates shorter
+        than the baseline, this method leaves the segment unchanged.
         """
         import copy
-        from foreign_whispers.alignment import AlignAction, compute_segment_metrics, decide_action
+        from foreign_whispers.alignment import (
+            AlignAction,
+            _estimate_duration,
+            compute_segment_metrics,
+            decide_action,
+        )
         from foreign_whispers.reranking import get_shorter_translations
 
         result = copy.deepcopy(es_transcript)
@@ -87,7 +91,7 @@ class TranslationService:
             if candidates:
                 best = min(
                     candidates,
-                    key=lambda c: abs(len(c.text) / 15.0 - m.source_duration_s),
+                    key=lambda c: abs(_estimate_duration(c.text) - m.source_duration_s),
                 )
                 result["segments"][m.index]["text"] = best.text
 

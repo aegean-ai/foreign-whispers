@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     def dubbed_captions_dir(self) -> Path:
         return self.data_dir / "dubbed_captions"
 
+    @property
+    def diarizations_dir(self) -> Path:
+        return self.data_dir / "diarizations"
+
     # S3 storage
     s3_bucket: str = ""
     s3_endpoint_url: str = ""
@@ -85,12 +89,18 @@ class Settings(BaseSettings):
     # External service URLs
     chatterbox_api_url: str = "http://localhost:8020"
     whisper_api_url: str = "http://localhost:8000"
+    #: Model ID for OpenAI-compatible ``POST …/v1/audio/transcriptions`` (e.g. Speaches / HF id).
+    whisper_remote_model: str = "Systran/faster-whisper-medium"
 
     # HuggingFace token for pyannote speaker diarization model
     hf_token: str = ""
 
     # Logfire write token — set via FW_LOGFIRE_WRITE_TOKEN (or put in .env)
     logfire_write_token: str = ""
+
+    # Ridge JSON trained by scripts/train_tts_duration_predictor.py → better TTS duration estimates in alignment.py.
+    # In Docker Compose use the container path (e.g. /app/foreign_whispers/tts_duration_ridge.json); see .env.example.
+    tts_duration_model: str = ""
 
     model_config = {"env_prefix": "FW_"}
 

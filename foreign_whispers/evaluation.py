@@ -51,3 +51,31 @@ def clip_evaluation_report(
         "n_translation_retries":     n_retry,
         "total_cumulative_drift_s":  round(drift, 3),
     }
+
+
+def clip_quality_scorecard(
+    metrics: list[SegmentMetrics],
+    aligned: list[AlignedSegment],
+) -> dict:
+    """Timing-focused scorecard; other axes reserved for future eval hooks.
+
+    Merges :func:`clip_evaluation_report` with normalized ``timing_score`` in
+    ``[0, 1]`` and placeholder keys for subjective / model-based metrics not
+    computed in this offline pipeline.
+    """
+    report = clip_evaluation_report(metrics, aligned)
+    mean_err = report["mean_abs_duration_error_s"]
+    pct_severe = report["pct_severe_stretch"] / 100.0
+
+    err_component = max(0.0, 1.0 - min(1.0, mean_err / 1.25))
+    stretch_component = max(0.0, 1.0 - min(1.0, pct_severe * 2.0))
+    timing_score = round(0.62 * err_component + 0.38 * stretch_component, 4)
+
+    return {
+        **report,
+        "timing_score": timing_score,
+        "intelligibility_score": None,
+        "semantic_score": None,
+        "naturalness_score": None,
+        "overall_score": timing_score,
+    }

@@ -18,6 +18,10 @@ _translation_service = TranslationService(ui_dir=settings.data_dir)
 async def translate_endpoint(
     video_id: str,
     target_language: str = Query(default="es"),
+    force: bool = Query(
+        default=False,
+        description="Re-translate from disk even if {title}.json already exists (e.g. after diarize adds speaker labels).",
+    ),
 ):
     """Translate a single video's transcript (fixes issue 5ss — no directory sweep)."""
     raw_dir = settings.transcriptions_dir
@@ -30,8 +34,8 @@ async def translate_endpoint(
 
     out_path = out_dir / f"{title}.json"
 
-    # Skip if already translated
-    if out_path.exists():
+    # Skip if already translated (unless force refresh after e.g. diarization)
+    if out_path.exists() and not force:
         data = json.loads(out_path.read_text())
         return {
             "video_id": video_id,

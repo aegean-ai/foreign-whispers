@@ -1,7 +1,9 @@
 """Foreign Whispers FastAPI application."""
 
 import logging
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,6 +23,21 @@ async def lifespan(app: FastAPI):
     app.state._whisper_model = None
     app.state._tts_model = None
     logger.info("Application ready (models will load on first use).")
+
+    if settings.tts_duration_model.strip():
+        os.environ.setdefault(
+            "FW_TTS_DURATION_MODEL",
+            settings.tts_duration_model.strip(),
+        )
+
+    tts_dm = os.environ.get("FW_TTS_DURATION_MODEL", "").strip()
+    if tts_dm:
+        rp = Path(tts_dm).expanduser()
+        logger.info(
+            "FW_TTS_DURATION_MODEL=%s (%s)",
+            tts_dm,
+            "readable" if rp.is_file() else "file missing → syllable fallback",
+        )
 
     # Configure Logfire if a write token is available
     if settings.logfire_write_token:
@@ -83,12 +100,14 @@ def create_app() -> FastAPI:
 
     from api.src.routers.download import router as download_router
     from api.src.routers.transcribe import router as transcribe_router
+    from api.src.routers.diarize import router as diarize_router
     from api.src.routers.translate import router as translate_router
     from api.src.routers.tts import router as tts_router
     from api.src.routers.stitch import router as stitch_router
 
     app.include_router(download_router)
     app.include_router(transcribe_router)
+    app.include_router(diarize_router)
     app.include_router(translate_router)
     app.include_router(tts_router)
     app.include_router(stitch_router)

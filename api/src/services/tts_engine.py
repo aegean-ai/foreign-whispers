@@ -16,6 +16,17 @@ from pydub import AudioSegment
 CHATTERBOX_API_URL = os.getenv("CHATTERBOX_API_URL", "http://localhost:8020")
 # Path to the default speaker reference WAV, relative to pipeline_data/speakers/
 CHATTERBOX_SPEAKER_WAV = os.getenv("CHATTERBOX_SPEAKER_WAV", "")
+_CH_HTTP_CONNECT_S = float(os.getenv("FW_CHATTERBOX_HTTP_CONNECT_TIMEOUT", "10"))
+_CH_HTTP_READ_S = float(os.getenv("FW_CHATTERBOX_HTTP_READ_TIMEOUT", "120"))
+_TTS_CHATTERBOX_ERROR_HINTS_PRINTED: set[str] = set()
+
+
+def _log_tts_issue_once(kind: str, msg: str) -> None:
+    """Print each distinct *kind* of TTS/Chatterbox problem at most once (avoid log spam per segment)."""
+    if kind in _TTS_CHATTERBOX_ERROR_HINTS_PRINTED:
+        return
+    _TTS_CHATTERBOX_ERROR_HINTS_PRINTED.add(kind)
+    print(f"[tts] {msg}")
 
 # Set FW_ALIGNMENT=off to use the pre-alignment baseline (legacy unclamped stretch).
 # Default is "on" (new clamped path). Useful for A/B comparisons.
@@ -76,13 +87,34 @@ class ChatterboxClient:
 
     def _synthesize_default(self, text: str) -> bytes:
         """Call /v1/audio/speech with the server's default voice."""
-        resp = requests.post(
-            f"{self.base_url}/v1/audio/speech",
-            json={"input": text, "response_format": "wav"},
-            timeout=(5, 60),
-        )
+        try:
+            resp = requests.post(
+                f"{self.base_url}/v1/audio/speech",
+                json={"input": text, "response_format": "wav"},
+                timeout=(_CH_HTTP_CONNECT_S, _CH_HTTP_READ_S),
+            )
+        except requests.RequestException as exc:
+            _log_tts_issue_once(
+                "chatterbox_connect",
+                f"Cannot reach Chatterbox at {self.base_url!r} ({exc}). "
+                "Check SSH tunnel, CHATTERBOX_API_URL inside the API container, and that the GPU host is listening.",
+            )
+            raise
+
+        if not resp.ok:
+            hint = resp.text[:400].replace("\n", " ").strip()
+            _log_tts_issue_once(
+                f"http_{resp.status_code}",
+                f"Chatterbox /v1/audio/speech HTTP {resp.status_code} ({self.base_url}): {hint}",
+            )
         resp.raise_for_status()
-        return resp.content
+        data = resp.content
+        if not data or len(data) < 100:
+            _log_tts_issue_once(
+                "empty_wav_response",
+                f"Chatterbox returned unusually small payload ({len(data) if data else 0} bytes).",
+            )
+        return data
 
     def _synthesize_with_voice(self, text: str, speaker_wav: str) -> bytes:
         """Call /v1/audio/speech/upload with a reference WAV for voice cloning."""
@@ -99,11 +131,24 @@ class ChatterboxClient:
             return self._synthesize_default(text)
 
         with open(wav_path, "rb") as f:
-            resp = requests.post(
-                f"{self.base_url}/v1/audio/speech/upload",
-                data={"input": text, "response_format": "wav"},
-                files={"voice_file": (wav_path.name, f, "audio/wav")},
-                timeout=(5, 60),
+            try:
+                resp = requests.post(
+                    f"{self.base_url}/v1/audio/speech/upload",
+                    data={"input": text, "response_format": "wav"},
+                    files={"voice_file": (wav_path.name, f, "audio/wav")},
+                    timeout=(_CH_HTTP_CONNECT_S, _CH_HTTP_READ_S),
+                )
+            except requests.RequestException as exc:
+                _log_tts_issue_once(
+                    "chatterbox_upload_connect",
+                    f"Cannot reach Chatterbox upload endpoint at {self.base_url!r} ({exc}).",
+                )
+                raise
+        if not resp.ok:
+            hint = resp.text[:400].replace("\n", " ").strip()
+            _log_tts_issue_once(
+                f"upload_http_{resp.status_code}",
+                f"Chatterbox /v1/audio/speech/upload HTTP {resp.status_code}: {hint}",
             )
         resp.raise_for_status()
         return resp.content
@@ -125,28 +170,14 @@ class ChatterboxClient:
         return chunks if chunks else [text]
 
 
-def _make_tts_engine():
-    """Create TTS engine: Chatterbox API client if server is reachable, else local Coqui.
+def _make_coqui_tts_engine():
+    """Local Coqui TTS (Spanish tacotron). Uses CUDA if present, otherwise CPU."""
 
-    Tries Chatterbox with a real /v1/audio/speech test call
-    to ensure the model is fully loaded before committing.
-    """
-    try:
-        client = ChatterboxClient()
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
-            client.tts_to_file(text="prueba", file_path=tmp.name)
-        print(f"[tts] Using Chatterbox GPU server at {CHATTERBOX_API_URL}")
-        return client
-    except Exception as exc:
-        print(f"[tts] Chatterbox not available ({exc}), falling back to local Coqui")
-
-    # Fallback: local Coqui TTS (for dev/test without Docker)
     import functools
+
     import torch
     from TTS.api import TTS as CoquiTTS
-    # Coqui TTS checkpoints contain classes (RAdam, defaultdict, etc.) that
-    # PyTorch 2.6+ rejects with weights_only=True.  Monkey-patch torch.load
-    # to default to weights_only=False for these trusted model files.
+
     _original_torch_load = torch.load
     @functools.wraps(_original_torch_load)
     def _patched_load(*args, **kwargs):
@@ -156,6 +187,36 @@ def _make_tts_engine():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"[tts] Using local Coqui TTS on {device}")
     return CoquiTTS(model_name="tts_models/es/mai/tacotron2-DDC", progress_bar=False).to(device)
+
+
+def _make_tts_engine():
+    """Create TTS engine: Chatterbox API client if server is reachable, else local Coqui.
+
+    Tries Chatterbox with a real /v1/audio/speech test call
+    to ensure the model is fully loaded before committing.
+    """
+
+    force_local = os.getenv("FW_TTS_ENGINE", "").strip().lower()
+    if force_local in ("coqui", "local", "cpu"):
+        print(f"[tts] FW_TTS_ENGINE={force_local!r} — skipping Chatterbox, using bundled Coqui")
+        return _make_coqui_tts_engine()
+
+    skip_probe = os.getenv("FW_CHATTERBOX_SKIP_HEAVY_PROBE", "").lower() in ("1", "true", "yes")
+    if skip_probe:
+        client = ChatterboxClient()
+        print(f"[tts] Using Chatterbox-compatible server at {CHATTERBOX_API_URL} (probe skipped)")
+        return client
+
+    try:
+        client = ChatterboxClient()
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
+            client.tts_to_file(text="prueba", file_path=tmp.name)
+        print(f"[tts] Using Chatterbox GPU server at {CHATTERBOX_API_URL}")
+        return client
+    except Exception as exc:
+        print(f"[tts] Chatterbox not available ({exc}), falling back to local Coqui")
+
+    return _make_coqui_tts_engine()
 
 
 _tts_engine = None
@@ -196,12 +257,59 @@ def files_from_dir(dir_path) -> list:
     return es_files
 
 
-def _synthesize_raw(tts_engine, text: str, wav_path: str) -> bytes | None:
+def _list_speaker_reference_relpaths(speakers_root: pathlib.Path) -> list[str]:
+    """Relative paths under *speakers_root* for all ``*.wav`` files (sorted).
+
+    ``default.wav`` (any depth) is excluded from the list when at least one
+    other ``*.wav`` exists so per-speaker round-robin uses distinct reference
+    clips instead of burning the first slot on the global fallback.
+    """
+    if not speakers_root.is_dir():
+        return []
+    all_rels = sorted(
+        str(p.relative_to(speakers_root))
+        for p in speakers_root.rglob("*.wav")
+    )
+    non_default = [r for r in all_rels if pathlib.Path(r).name.lower() != "default.wav"]
+    return non_default if non_default else all_rels
+
+
+def _unique_speaker_order(segments: list[dict]) -> list[str]:
+    out: list[str] = []
+    for seg in segments:
+        sp = seg.get("speaker")
+        if sp and sp not in out:
+            out.append(str(sp))
+    return out
+
+
+def _speaker_voice_relpath_map(segments: list[dict], speakers_root: pathlib.Path) -> dict[str, str]:
+    """Map pyannote speaker id → reference WAV path relative to *speakers_root*."""
+    rels = _list_speaker_reference_relpaths(speakers_root)
+    if not rels:
+        return {}
+    order = _unique_speaker_order(segments)
+    return {sp: rels[i % len(rels)] for i, sp in enumerate(order)}
+
+
+def _synthesize_raw(
+    tts_engine,
+    text: str,
+    wav_path: str,
+    *,
+    speaker_wav: str | None = None,
+) -> bytes | None:
     """GPU-bound: call TTS engine and return raw WAV bytes, or None on failure."""
     if not text or not text.strip():
         return None
     try:
-        tts_engine.tts_to_file(text=text, file_path=wav_path)
+        if speaker_wav:
+            try:
+                tts_engine.tts_to_file(text=text, file_path=wav_path, speaker_wav=speaker_wav)
+            except TypeError:
+                tts_engine.tts_to_file(text=text, file_path=wav_path)
+        else:
+            tts_engine.tts_to_file(text=text, file_path=wav_path)
         return pathlib.Path(wav_path).read_bytes()
     except Exception as exc:
         print(f"[tts] TTS failed for segment ({exc}), using silence")
@@ -343,6 +451,8 @@ def _write_align_report(
     metrics: list,
     aligned: list,
     segment_details: list,
+    *,
+    synth_stats: dict | None = None,
 ) -> None:
     """Write a {stem}.align.json sidecar with evaluation metrics and per-segment detail.
 
@@ -362,7 +472,12 @@ def _write_align_report(
             "total_cumulative_drift_s": 0.0,
         }
 
-    report = {**summary, "alignment_enabled": _ALIGNMENT_ENABLED, "segments": segment_details}
+    report = {
+        **summary,
+        "alignment_enabled": _ALIGNMENT_ENABLED,
+        **(synth_stats or {}),
+        "segments": segment_details,
+    }
     sidecar_path = pathlib.Path(output_path) / f"{stem}.align.json"
     sidecar_path.write_text(json.dumps(report, indent=2))
 
@@ -395,7 +510,14 @@ def _compute_speech_offset(source_path: str) -> float:
     return yt_start - whisper_start
 
 
-def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=None):
+def text_file_to_speech(
+    source_path,
+    output_path,
+    tts_engine=None,
+    *,
+    alignment=None,
+    per_speaker_voices: bool = True,
+):
     """Read translated JSON with segment timestamps and produce a time-aligned WAV.
 
     Each segment is individually synthesized and time-stretched to match its
@@ -408,6 +530,10 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
 
     *alignment* overrides the module-level ``_ALIGNMENT_ENABLED`` flag.
     Pass True for aligned mode, False for baseline, or None to use the env var.
+
+    When *per_speaker_voices* is True and segment dicts contain ``speaker``,
+    reference WAVs under ``pipeline_data/speakers/**/*.wav`` are assigned
+    round-robin to distinct speaker ids for Chatterbox voice cloning.
     """
     engine = tts_engine if tts_engine is not None else _get_tts_engine()
     use_alignment = alignment if alignment is not None else _ALIGNMENT_ENABLED
@@ -432,6 +558,14 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
     # Pre-compute alignment; also returns flat metrics list for clip_evaluation_report
     with open(source_path) as f:
         es_transcript = json.load(f)
+    speakers_root = (
+        pathlib.Path(__file__).resolve().parent.parent.parent.parent / "pipeline_data" / "speakers"
+    )
+    spk_to_wav = (
+        _speaker_voice_relpath_map(es_transcript.get("segments", []), speakers_root)
+        if per_speaker_voices
+        else {}
+    )
     en_transcript = _load_en_transcript(source_path)
     if use_alignment:
         _metrics_list, align_map = _build_alignment(en_transcript, es_transcript)
@@ -456,6 +590,8 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
                     en_text = en_segs[i].get("text", "")
                 seg_text = _shorten_segment_text(en_text, seg["text"], target_sec)
 
+        raw_spk = seg.get("speaker") if isinstance(seg, dict) else None
+        speaker_wav = spk_to_wav.get(str(raw_spk)) if raw_spk and spk_to_wav else None
         seg_metas.append({
             "index": i,
             "text": seg_text,
@@ -464,6 +600,7 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
             "target_sec": target_sec,
             "stretch_factor": stretch_factor,
             "aligned_seg": aligned_seg,
+            "speaker_wav": speaker_wav,
         })
 
     # ── Phase 1: GPU synthesis (concurrent) ───────────────────────────
@@ -475,20 +612,40 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
     raw_wav_map: dict[int, bytes | None] = {}
 
     with tempfile.TemporaryDirectory() as synth_dir:
-        def _do_synth(idx: int, text: str) -> tuple[int, bytes | None]:
+        def _do_synth(meta: dict) -> tuple[int, bytes | None]:
+            idx = meta["index"]
             wav_path = str(pathlib.Path(synth_dir) / f"seg_{idx}.wav")
-            return idx, _synthesize_raw(engine, text, wav_path)
+            return idx, _synthesize_raw(
+                engine,
+                meta["text"],
+                wav_path,
+                speaker_wav=meta.get("speaker_wav"),
+            )
 
         with ThreadPoolExecutor(max_workers=_TTS_WORKERS) as pool:
             futures = {
-                pool.submit(_do_synth, m["index"], m["text"]): m["index"]
+                pool.submit(_do_synth, m): m["index"]
                 for m in seg_metas
             }
             for fut in as_completed(futures):
                 idx, raw_bytes = fut.result()
                 raw_wav_map[idx] = raw_bytes
 
-    print(f" ({len(segments)} segments synthesized)", end="")
+    n_total = len(segments)
+    n_ok_raw = sum(1 for i in range(n_total) if raw_wav_map.get(i))
+    n_fail_raw = n_total - n_ok_raw
+    print(
+        f" ({n_total} segments; {n_ok_raw} with raw audio, {n_fail_raw} synth failures → silence / raw_duration_s=0)",
+        end="",
+    )
+    _engine_label = type(engine).__name__
+    synth_stats = {
+        "tts_engine_class": _engine_label,
+        "tts_segments_total": n_total,
+        "tts_raw_synthesis_ok": n_ok_raw,
+        "tts_raw_synthesis_failed": n_fail_raw,
+        "chatterbox_api_url": CHATTERBOX_API_URL,
+    }
 
     # ── Phase 2: CPU post-processing (sequential assembly) ────────────
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -528,7 +685,9 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
         combined.export(str(save_path), format="wav")
 
     stem = pathlib.Path(source_path).stem
-    _write_align_report(str(output_path), stem, _metrics_list, _aligned_list, segment_details)
+    _write_align_report(
+        str(output_path), stem, _metrics_list, _aligned_list, segment_details, synth_stats=synth_stats
+    )
 
     print("success!")
     return None

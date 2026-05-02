@@ -213,6 +213,10 @@ async def stitch_endpoint(
     """Replace video audio with dubbed TTS audio.
 
     *config* selects which TTS audio to use (opaque directory name).
+
+    Per the course P5 stitch stage: **ffmpeg remux** (copy video, replace audio).
+    Translated **WebVTT** is generated **alongside** the MP4 under ``dubbed_captions/``
+    when clients call ``GET /api/captions/{video_id}`` (or the Dubbing Studio loads captions).
     """
     videos_dir = settings.videos_dir
     output_dir = settings.dubbed_videos_dir / config

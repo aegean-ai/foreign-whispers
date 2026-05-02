@@ -10,13 +10,122 @@ The module provides:
 - ``decide_action`` — per-segment policy that chooses accept / stretch / shift / retry / fail.
 - ``global_align`` — greedy left-to-right pass that schedules all segments
   on a shared timeline, tracking cumulative drift from gap shifts.
+- ``global_align_dp`` — small beam search over silence-budget guesses; can beat
+  ``global_align`` on drift / overlap / harsh-stretch trade-offs on some tapes.
 
-No external dependencies — stdlib only.
+TTS duration can be predicted with optional JSON weights produced by
+``scripts/train_tts_duration_predictor.py``:
+
+- Environment variable ``FW_TTS_DURATION_MODEL`` (path to trained JSON).
+- Fallback file ``tts_duration_ridge.json`` beside this module.
+
+If neither is present or JSON is unreadable, a syllables-per-second heuristic
+is used (~4.5 syllables/s for Romance languages).
+
+Tests set ``FW_TTS_DURATION_MODEL_TESTS_USE_HEURISTIC_ONLY=1`` to ignore the
+optional ``tts_duration_ridge.json`` shipped beside this package.
 """
+from __future__ import annotations
+
 import dataclasses
+import json
+import os
 import re
 import unicodedata
 from enum import Enum
+from pathlib import Path
+
+
+def reset_tts_duration_predictor_cache() -> None:
+    """Clear cached predictor JSON (primarily for tests)."""
+    global _TTS_DURATION_MODEL_CACHE_KEY, _TTS_DURATION_MODEL_BLOB
+    _TTS_DURATION_MODEL_CACHE_KEY = None
+    _TTS_DURATION_MODEL_BLOB = None
+
+
+_TTS_DURATION_MODEL_CACHE_KEY: tuple[str, float] | None = None
+_TTS_DURATION_MODEL_BLOB: dict | None = None
+
+
+def _duration_model_candidates() -> list[Path]:
+    paths: list[Path] = []
+    env_path = os.environ.get("FW_TTS_DURATION_MODEL", "").strip()
+    if env_path:
+        paths.append(Path(env_path).expanduser())
+    skip_bundled = os.environ.get("FW_TTS_DURATION_MODEL_TESTS_USE_HEURISTIC_ONLY", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if not skip_bundled:
+        paths.append(Path(__file__).resolve().parent / "tts_duration_ridge.json")
+    return paths
+
+
+def _load_tts_duration_model_blob() -> dict | None:
+    """Load ridge JSON artifact if configured; caches by (resolved path, mtime)."""
+
+    global _TTS_DURATION_MODEL_CACHE_KEY, _TTS_DURATION_MODEL_BLOB
+
+    for cand in _duration_model_candidates():
+        try:
+            path = cand.expanduser().resolve()
+            st = path.stat()
+        except OSError:
+            continue
+
+        cache_key = (str(path), st.st_mtime)
+        if cache_key == _TTS_DURATION_MODEL_CACHE_KEY:
+            return _TTS_DURATION_MODEL_BLOB
+
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if isinstance(raw, dict) and raw.get("kind") == "ridge_standard_scaled" and raw.get("version") == 1:
+            _TTS_DURATION_MODEL_CACHE_KEY = cache_key
+            _TTS_DURATION_MODEL_BLOB = raw
+            return raw
+
+    _TTS_DURATION_MODEL_CACHE_KEY = None
+    _TTS_DURATION_MODEL_BLOB = None
+    return None
+
+
+def _duration_feature_vector(text: str) -> tuple[float, float, float]:
+    t = text.strip()
+    chars = float(len(t))
+    syl = float(_count_syllables(t))
+    words = float(max(1, len(t.split())))
+    return chars, syl, words
+
+
+def _predict_tts_duration_from_model(text: str, blob: dict) -> float | None:
+    coef = blob.get("coef")
+    mean = blob.get("mean")
+    scale = blob.get("scale")
+    if not (
+        isinstance(coef, list)
+        and isinstance(mean, list)
+        and isinstance(scale, list)
+        and len(coef) == len(mean) == len(scale) == 3
+    ):
+        return None
+
+    if not text.strip():
+        return None
+
+    c, s, w = _duration_feature_vector(text)
+    xs = []
+    for xval, m, sc in ((c, mean[0], scale[0]), (s, mean[1], scale[1]), (w, mean[2], scale[2])):
+        denom = float(sc) if float(sc) > 1e-12 else 1.0
+        xs.append((float(xval) - float(m)) / denom)
+
+    intercept = float(blob.get("intercept", 0.0))
+    y = intercept + sum(float(ci) * xi for ci, xi in zip(coef, xs, strict=True))
+    lo = float(blob.get("min_duration_s", 0.05))
+    hi = float(blob.get("max_duration_s", 600.0))
+    return max(lo, min(hi, y))
 
 
 def _count_syllables(text: str) -> int:
@@ -37,7 +146,12 @@ _SYLLABLE_RATE = 4.5  # syllables per second for Romance languages
 
 
 def _estimate_duration(text: str) -> float:
-    """Estimate TTS duration in seconds using a syllable-rate heuristic."""
+    """Estimate TTS duration in seconds (trained Ridge JSON or syllable-rate fallback)."""
+    blob = _load_tts_duration_model_blob()
+    if blob is not None:
+        pred = _predict_tts_duration_from_model(text, blob)
+        if pred is not None:
+            return pred
     return _count_syllables(text) / _SYLLABLE_RATE
 
 
@@ -49,8 +163,9 @@ class SegmentMetrics:
     timestamps) and the translated target-language text.  The question is:
     *will the target-language TTS audio fit inside the source time window?*
 
-    We estimate the TTS duration using a syllable-rate heuristic
-    (~4.5 syllables/second for Romance languages) and derive three key numbers:
+    We estimate TTS duration with an optional Ridge model trained on
+    ``*.align.json`` timings (same features as syllable baseline) or fallback
+    syllable-rate heuristic (~4.5 syllables/second).
 
     Attributes:
         index: Zero-based segment position in the transcript.
@@ -61,7 +176,7 @@ class SegmentMetrics:
         translated_text: Target-language translation.
         src_char_count: Character count of the source text.
         tgt_char_count: Character count of the target text.
-        predicted_tts_s: Estimated TTS duration (syllables / 4.5).
+        predicted_tts_s: Estimated TTS duration (trained Ridge JSON or syllables / 4.5).
         predicted_stretch: Ratio ``predicted_tts_s / source_duration_s``.
             A value of 1.3 means the target-language audio is predicted to be
             30% longer than the available window.
@@ -213,6 +328,106 @@ def compute_segment_metrics(
     return metrics
 
 
+
+def silence_after(end_s: float, silence_regions: list[dict]) -> float:
+    """Return duration (seconds) of the next labelled silence interval after *end_s*."""
+    best = 0.0
+    for r in silence_regions:
+        if r.get("label") == "silence" and r["start_s"] >= end_s - 0.1:
+            best = max(best, r["end_s"] - r["start_s"])
+    return best
+
+
+def schedule_one_segment(
+    m: SegmentMetrics,
+    cumulative_drift: float,
+    available_gap_s: float,
+    max_stretch: float,
+) -> tuple[AlignedSegment, float]:
+    action = decide_action(m, available_gap_s=available_gap_s)
+    gap_shift = 0.0
+    stretch = 1.0
+    if action == AlignAction.GAP_SHIFT:
+        gap_shift = m.overflow_s
+    elif action == AlignAction.MILD_STRETCH:
+        stretch = min(m.predicted_stretch, max_stretch)
+    sched_start = m.source_start + cumulative_drift
+    sched_end = sched_start + m.source_duration_s + gap_shift
+    seg = AlignedSegment(
+        index=m.index,
+        original_start=m.source_start,
+        original_end=m.source_end,
+        scheduled_start=sched_start,
+        scheduled_end=sched_end,
+        text=m.translated_text,
+        action=action,
+        gap_shift_s=gap_shift,
+        stretch_factor=stretch,
+    )
+    cumulative_drift += gap_shift
+    return seg, cumulative_drift
+
+
+def _alignment_overlap_count(aligned: list[AlignedSegment]) -> int:
+    c = 0
+    for i in range(max(len(aligned) - 1, 0)):
+        if aligned[i].scheduled_end > aligned[i + 1].scheduled_start + 5e-2:
+            c += 1
+    return c
+
+
+def _beam_path_penalty(metrics: list[SegmentMetrics], aligned: list[AlignedSegment], max_stretch: float) -> float:
+    if not aligned or not metrics:
+        return 0.0
+    tail = aligned[-1]
+    tail_m = metrics[tail.index]
+    total_drift = tail.scheduled_end - tail_m.source_end - tail_m.source_duration_s
+    sev = sum(1 for a in aligned if a.stretch_factor >= max_stretch - 1e-6)
+    over = _alignment_overlap_count(aligned)
+    retr = sum(1 for a in aligned if a.action == AlignAction.REQUEST_SHORTER)
+    gaps = sum(a.gap_shift_s for a in aligned)
+    return gaps * 0.35 + abs(total_drift) * 0.5 + sev * 2.8 + retr * 1.8 + over * 12.0
+
+
+def global_align_dp(
+    metrics: list[SegmentMetrics],
+    silence_regions: list[dict],
+    max_stretch: float = 1.4,
+    *,
+    beam_width: int = 20,
+) -> list[AlignedSegment]:
+    """Beam search over multiple *reported silence budget* guesses per segment."""
+
+    if not metrics:
+        return []
+
+    beams: list[tuple[float, float, list[AlignedSegment]]] = [(0.0, 0.0, [])]
+
+    for m in metrics:
+        next_kept: dict[tuple[int, float], tuple[float, float, list[AlignedSegment]]] = {}
+        for _pref_cost, drift, aprefix in beams:
+            raw_gap = silence_after(m.source_end + drift, silence_regions)
+            tried = {round(x, 4) for x in (0.0, raw_gap)}
+            if raw_gap > 0.03:
+                tried.add(round(raw_gap * 0.55, 4))
+                tried.add(round(raw_gap * 0.35, 4))
+
+            for avail in sorted(tried):
+                seg, drift2 = schedule_one_segment(m, drift, avail, max_stretch)
+                new_aligned = [*aprefix, seg]
+                tot = _beam_path_penalty(metrics[: len(new_aligned)], new_aligned, max_stretch)
+                dq = round(drift2, 4)
+                key = (len(new_aligned), dq)
+                if key not in next_kept or tot < next_kept[key][0]:
+                    next_kept[key] = (tot, drift2, new_aligned)
+
+        beams = sorted(next_kept.values(), key=lambda t: t[0])[: max(2, beam_width)]
+
+    beams.sort(key=lambda t: t[0])
+    return beams[0][2]
+
+
+
 def global_align(
     metrics:         list[SegmentMetrics],
     silence_regions: list[dict],
@@ -261,40 +476,11 @@ def global_align(
     Returns:
         One ``AlignedSegment`` per input metric, in order.
     """
-    def _silence_after(end_s: float) -> float:
-        for r in silence_regions:
-            if r.get("label") == "silence" and r["start_s"] >= end_s - 0.1:
-                return r["end_s"] - r["start_s"]
-        return 0.0
-
     aligned, cumulative_drift = [], 0.0
 
     for m in metrics:
-        action    = decide_action(m, available_gap_s=_silence_after(m.source_end))
-        gap_shift = 0.0
-        stretch   = 1.0
-
-        if action == AlignAction.GAP_SHIFT:
-            gap_shift = m.overflow_s
-        elif action == AlignAction.MILD_STRETCH:
-            stretch = min(m.predicted_stretch, max_stretch)
-        # ACCEPT, REQUEST_SHORTER, FAIL → stretch stays at 1.0
-
-        sched_start = m.source_start + cumulative_drift
-        sched_end   = sched_start + m.source_duration_s + gap_shift
-
-        aligned.append(AlignedSegment(
-            index           = m.index,
-            original_start  = m.source_start,
-            original_end    = m.source_end,
-            scheduled_start = sched_start,
-            scheduled_end   = sched_end,
-            text            = m.translated_text,
-            action          = action,
-            gap_shift_s     = gap_shift,
-            stretch_factor  = stretch,
-        ))
-
-        cumulative_drift += gap_shift
+        avail = silence_after(m.source_end, silence_regions)
+        seg, cumulative_drift = schedule_one_segment(m, cumulative_drift, avail, max_stretch)
+        aligned.append(seg)
 
     return aligned

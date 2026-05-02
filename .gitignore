@@ -1,3 +1,8 @@
+# macOS / editor noise
+.DS_Store
+*.swp
+*~
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -168,6 +173,14 @@ data/transcriptions/
 pipeline_data/*
 !pipeline_data/speakers/
 
+# Course submission: large media only (README + small executed ipynb may be committed)
+deliverables/*.mp4
+deliverables/*.vtt
+deliverables/*.mov
+deliverables/*.webm
+# Optional local H.264 burn-in previews (see scripts/burn_in_dubbed_preview.py)
+deliverables/*_burnin*.mp4
+
 # Django runtime (removed, kept for safety)
 whispers/
 
@@ -175,6 +188,9 @@ whispers/
 credentials_desktop_app.json
 token.json
 cookies.txt
+
+# Optional trained TTS duration predictor (scripts/train_tts_duration_predictor.py)
+foreign_whispers/tts_duration_ridge.json
 
 # ML model weights and caches (downloaded at runtime)
 *.pb

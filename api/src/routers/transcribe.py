@@ -3,10 +3,12 @@
 import json
 import pathlib
 
+import requests
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from api.src.core.config import settings
 from api.src.core.dependencies import resolve_title
+from api.src.inference import get_whisper_backend
 from api.src.main import get_whisper_model
 from api.src.schemas.transcribe import TranscribeResponse, TranscribeSegment
 from api.src.services.transcription_service import TranscriptionService
@@ -40,6 +42,20 @@ def _youtube_captions_to_segments(caption_path: pathlib.Path) -> dict:
         "text": " ".join(full_text_parts),
         "segments": segments,
     }
+
+
+@router.get("/transcribe/{video_id}")
+async def transcribe_get_not_supported(video_id: str) -> None:
+    """Opening the transcribe URL in a browser issues GET — transcription is POST-only."""
+
+    raise HTTPException(
+        status_code=405,
+        detail=(
+            "This endpoint only accepts POST (a browser navigation is GET). "
+            f'Try: curl -X POST "http://localhost:8080/api/transcribe/{video_id}?use_youtube_captions=false"'
+        ),
+        headers={"Allow": "POST"},
+    )
 
 
 @router.post("/transcribe/{video_id}", response_model=TranscribeResponse)
@@ -88,13 +104,53 @@ async def transcribe_endpoint(
                 skipped=True,
             )
 
-    # Run Whisper STT
+    # Run Whisper STT (in-process, or remote HTTP e.g. Speaches behind SSH -L)
+    if settings.whisper_backend == "remote":
+        whisper_engine = get_whisper_backend(
+            "remote",
+            api_url=settings.whisper_api_url,
+        )
+    else:
+        whisper_engine = get_whisper_model(request.app)
+
     svc = TranscriptionService(
         ui_dir=settings.data_dir,
-        whisper_model=get_whisper_model(request.app),
+        whisper_model=whisper_engine,
     )
     video_path = videos_dir / f"{title}.mp4"
-    result = svc.transcribe(str(video_path))
+    if not video_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail=f"No video file at {video_path}. Run download for this id first.",
+        )
+
+    try:
+        result = svc.transcribe(str(video_path))
+    except requests.HTTPError as e:
+        r = e.response
+        body = (r.text if r is not None else "") or ""
+        code = r.status_code if r is not None else None
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "Remote Whisper (Speaches) request failed",
+                "upstream_status": code,
+                "upstream_body": body[:4000],
+            },
+        ) from e
+    except requests.RequestException as e:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "Could not reach remote Whisper service (check FW_WHISPER_API_URL / tunnel)",
+                "error": str(e),
+            },
+        ) from e
+    except ValueError as e:
+        raise HTTPException(
+            status_code=502,
+            detail={"message": "Invalid response from remote Whisper", "error": str(e)},
+        ) from e
 
     # Persist result
     transcript_path.write_text(json.dumps(result))

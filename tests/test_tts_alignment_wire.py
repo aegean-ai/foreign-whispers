@@ -84,7 +84,7 @@ def test_text_file_to_speech_calls_alignment(tmp_path):
 
     called_with_stretch = []
 
-    def fake_synced(engine, text, target_sec, work_dir, stretch_factor=1.0):
+    def fake_postprocess(raw_wav_bytes, target_sec, stretch_factor, alignment_enabled, work_dir):
         called_with_stretch.append(stretch_factor)
         from pydub import AudioSegment
         return AudioSegment.silent(duration=int(target_sec * 1000)), 1.0, target_sec
@@ -96,7 +96,13 @@ def test_text_file_to_speech_calls_alignment(tmp_path):
     mock_aligned_seg.action = AlignAction.MILD_STRETCH
 
     engine = MagicMock()
-    with patch("api.src.services.tts_engine._synced_segment_audio", side_effect=fake_synced), \
+
+    def fake_synth(_engine, _text, wav_path):
+        pathlib.Path(wav_path).write_bytes(b"RIFF" + b"\x00" * 200)  # minimal placeholder; postprocess is patched
+
+    engine.tts_to_file.side_effect = fake_synth
+
+    with patch("api.src.services.tts_engine._postprocess_segment", side_effect=fake_postprocess), \
          patch("api.src.services.tts_engine._build_alignment", return_value=([], {0: mock_aligned_seg})):
         text_file_to_speech(str(es_path), str(out_dir), tts_engine=engine)
 
@@ -121,13 +127,19 @@ def test_text_file_to_speech_missing_en_transcript(tmp_path):
 
     called_with_stretch = []
 
-    def fake_synced(engine, text, target_sec, work_dir, stretch_factor=1.0):
+    def fake_postprocess(raw_wav_bytes, target_sec, stretch_factor, alignment_enabled, work_dir):
         called_with_stretch.append(stretch_factor)
         from pydub import AudioSegment
         return AudioSegment.silent(duration=int(target_sec * 1000)), 1.0, target_sec
 
     engine = MagicMock()
-    with patch("api.src.services.tts_engine._synced_segment_audio", side_effect=fake_synced):
+
+    def fake_synth(_engine, _text, wav_path):
+        pathlib.Path(wav_path).write_bytes(b"RIFF" + b"\x00" * 200)
+
+    engine.tts_to_file.side_effect = fake_synth
+
+    with patch("api.src.services.tts_engine._postprocess_segment", side_effect=fake_postprocess):
         text_file_to_speech(str(es_path), str(out_dir), tts_engine=engine)
 
     # Synthesis ran even without EN transcript
@@ -138,15 +150,16 @@ def test_text_file_to_speech_missing_en_transcript(tmp_path):
     assert (out_dir / f"{title}.wav").exists()
 
 
-def test_shorten_segment_text_returns_original_when_stub():
-    """_shorten_segment_text returns original ES text when stub returns []."""
+def test_shorten_segment_text_returns_original_when_no_candidates():
+    """_shorten_segment_text returns original ES text when reranking yields no candidates."""
     from api.src.services.tts_engine import _shorten_segment_text
 
-    result = _shorten_segment_text(
-        en_text="This is a long sentence.",
-        es_text="Esta es una frase muy larga.",
-        target_sec=2.0,
-    )
+    with patch("foreign_whispers.reranking.get_shorter_translations", return_value=[]):
+        result = _shorten_segment_text(
+            en_text="This is a long sentence.",
+            es_text="Esta es una frase muy larga.",
+            target_sec=2.0,
+        )
     assert result == "Esta es una frase muy larga."
 
 

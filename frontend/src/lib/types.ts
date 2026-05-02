@@ -32,6 +32,19 @@ export interface TranscribeResponse {
   skipped: boolean;
 }
 
+export interface DiarizeSpeakerSegment {
+  start_s: number;
+  end_s: number;
+  speaker: string;
+}
+
+export interface DiarizeResponse {
+  video_id: string;
+  speakers: string[];
+  segments: DiarizeSpeakerSegment[];
+  skipped: boolean;
+}
+
 export interface TranslateResponse {
   video_id: string;
   target_language: string;
@@ -49,7 +62,13 @@ export interface StitchResponse {
   video_path: string;
 }
 
-export type PipelineStage = "download" | "transcribe" | "translate" | "tts" | "stitch";
+export type PipelineStage =
+  | "download"
+  | "transcribe"
+  | "diarize"
+  | "translate"
+  | "tts"
+  | "stitch";
 export type StageStatus = "pending" | "active" | "complete" | "skipped" | "error";
 
 export interface StageState {

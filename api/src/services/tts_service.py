@@ -17,9 +17,22 @@ class TTSService:
         self.ui_dir = ui_dir
         self.tts_engine = tts_engine
 
-    def text_file_to_speech(self, source_path: str, output_path: str, *, alignment: bool | None = None) -> None:
+    def text_file_to_speech(
+        self,
+        source_path: str,
+        output_path: str,
+        *,
+        alignment: bool | None = None,
+        per_speaker_voices: bool = True,
+    ) -> None:
         """Generate time-aligned TTS audio from a translated JSON transcript."""
-        tts_text_file_to_speech(source_path, output_path, self.tts_engine, alignment=alignment)
+        tts_text_file_to_speech(
+            source_path,
+            output_path,
+            self.tts_engine,
+            alignment=alignment,
+            per_speaker_voices=per_speaker_voices,
+        )
 
     @staticmethod
     def title_for_video_id(video_id: str, search_dir: pathlib.Path) -> str | None:
