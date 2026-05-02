@@ -4,6 +4,40 @@
 
 YouTube video dubbing pipeline — transcribe, translate, and dub 60 Minutes interviews into a target language.
 
+## Student implementation (NYU Foreign Whispers course)
+
+This branch/fork contains a **full end-to-end solution** for the course pipeline: download → transcribe → (optional) diarize → translate → TTS (with alignment hooks) → stitch, plus the **Next.js Dubbing Studio** and **`foreign_whispers`** library tasks (alignment, re-ranking, evaluation, voice resolution, diarization helpers).
+
+### Constraints we worked under
+
+- **No local NVIDIA GPU** on the primary development machine. Whisper and Chatterbox are **heavy GPU services**; running everything in one `docker compose --profile nvidia` stack was not possible.
+- We therefore used a **split architecture**: **GPU lab cluster** nodes run **Speaches** (Whisper, port 8000) and **Chatterbox TTS API** (port 8020); a **CPU-only** host runs **FastAPI** + **frontend** in Docker and calls those services over **HTTP**, with **SSH port forwarding** from the laptop when needed (`scripts/ssh_inference_tunnel.sh`, `docs/REMOTE_GPU_LAB.md`).
+- The assignment was completed **solo**. Operating a multi-container pipeline, remote inference, alignment experiments, and all integration notebooks **without** on-machine GPUs made iteration and debugging significantly harder than the “single `docker compose --profile nvidia up`” path in the handout.
+
+### Where we differ from the handout’s expected wiring
+
+| Area | Course / notebook expectation | What we implemented instead |
+|------|------------------------------|----------------------------|
+| **GPU topology** | All services on one GPU machine via Compose | **Remote** STT/TTS on a lab host; API configured with `FW_WHISPER_BACKEND=remote`, `FW_WHISPER_API_URL`, `CHATTERBOX_API_URL` (see `.env.example` and `docs/REMOTE_GPU_LAB.md`). |
+| **TTS API (Notebook 6)** | Optional `speaker_wav` **query parameter** on `POST /api/tts/{id}`; per-speaker voices via `resolve_speaker_wav()` | **`per_speaker_voice`** boolean; `foreign_whispers.voice_resolution.resolve_speaker_wav()` is **implemented and unit-tested**, but the runtime map in `tts_engine` assigns reference WAVs by **round-robin over files** under `pipeline_data/speakers/`, not by calling `resolve_speaker_wav` per `SPEAKER_xx`. Functionally you still get **distinct cloning clips per diarized speaker** when files exist. |
+| **Stitch (Notebook 7)** | Dubbed MP4 + **sidecar WebVTT** | We follow **P5** as specified: ffmpeg **remux** (copy video, replace audio); rolling WebVTT is materialized under `dubbed_captions/` and served by `GET /api/captions/{id}`. We **do not** mux subtitles into the MP4 as part of stitch (optional burn-in script exists for local previews only). |
+| **Chatterbox upstream** | Default upstream images / deps | On the GPU host we used **lab-specific** `pyproject.toml` overrides (CUDA 12.8 wheels, multilingual fork) and a **tempfile-based WAV** encode path; reference copies live under `contrib/lab-chatterbox-tts-api/` with `contrib/lab-chatterbox-tts-api/README.md`. |
+
+### Lab merge from `remote-foreign-whispers/`
+
+Previously, ad-hoc copies lived under `remote-foreign-whispers/`. That content is now **merged into the main tree**:
+
+- `scripts/remote-cluster/start-chatterbox.sh` and `start-speaches.sh` — generic GPU index (`CUDA_VISIBLE_DEVICES`, no lab-specific UUIDs in git).
+- `contrib/lab-chatterbox-tts-api/` — reference **config / speech / pyproject** snippets for the separate Chatterbox repo on the cluster.
+
+### Submitting work upstream (issues + PRs)
+
+See **`docs/UPSTREAM_CONTRIBUTION.md`** for fork setup, **suggested GitHub issue titles/bodies** you can paste into `github.com/aegean-ai/foreign-whispers`, and the exact **`git push` + PR** flow. The GitHub CLI (`gh`) is optional.
+
+### Turn-in artifacts (not in git)
+
+Large **`.mp4` / `.vtt`** for grading live in **`deliverables/`** locally (see `deliverables/README.md`); they are **gitignored**. Submit them via **Google Drive / LMS** as instructed, together with a link to your **pull request**.
+
 ## Architecture
 
 ```mermaid
@@ -55,6 +89,8 @@ docker compose --profile nvidia up -d
 # CPU only — no GPU containers (STT/TTS must be provided externally)
 docker compose --profile cpu up -d
 ```
+
+If you use **remote** Speaches/Chatterbox on a lab GPU host, set the `FW_WHISPER_*` and `CHATTERBOX_API_URL` variables from `.env.example` and read **`docs/REMOTE_GPU_LAB.md`**.
 
 Open **http://localhost:8501** in your browser.
 
@@ -115,8 +151,15 @@ foreign-whispers/
 │       └── speakers/            # Reference voice clips
 ├── docker-compose.yml           # Profiles: nvidia, cpu, apple
 ├── Dockerfile                   # Multi-stage: cpu and gpu targets
+├── scripts/
+│   ├── ssh_inference_tunnel.sh  # SSH -L forwards for remote STT/TTS
+│   └── remote-cluster/          # start-speaches.sh, start-chatterbox.sh (GPU host)
+├── contrib/
+│   └── lab-chatterbox-tts-api/  # Reference patches for cluster Chatterbox clone
 └── docs/
-    └── dubbing-alignment-design.md  # TTS temporal alignment literature survey + design
+    ├── REMOTE_GPU_LAB.md        # Split-host CPU orchestrator + GPU inference
+    ├── UPSTREAM_CONTRIBUTION.md # How to file issues + open PRs to aegean-ai
+    └── tts-temporal-alignment-research.md
 ```
 
 ## API Endpoints

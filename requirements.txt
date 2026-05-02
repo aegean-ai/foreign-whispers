@@ -1,12 +1,21 @@
-torch>=2.0
-torchaudio>=2.0
-TTS @ git+https://github.com/idiap/coqui-ai-TTS@v0.24.2
-pytube
+# Legacy pip install path. Prefer: uv sync (see pyproject.toml + uv.lock).
+# This file lists the same core runtime pieces the course stack expects.
+
+torch>=2.2,<2.8
+torchaudio>=2.2,<2.8
+TTS>=0.22.0
+yt-dlp
 youtube-transcript-api
 openai-whisper
 moviepy<2
 argostranslate
+transformers>=4.36,<4.46
+sentencepiece
 streamlit
+fastapi>=0.115
+uvicorn[standard]
+python-multipart
+pydantic-settings
 pyrubberband
 librosa
 soundfile
@@ -14,4 +23,4 @@ pydub
 requests
 setuptools<81
 numpy<2
-transformers<4.46
+pyyaml>=6.0.3
