@@ -464,6 +464,7 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
             "target_sec": target_sec,
             "stretch_factor": stretch_factor,
             "aligned_seg": aligned_seg,
+            "speaker": seg.get("speaker"),
         })
 
     # ── Phase 1: GPU synthesis (concurrent) ───────────────────────────
