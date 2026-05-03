@@ -38,10 +38,14 @@ class DownloadService:
 
     def download_video(self, url: str, destination: str, filename: str | None = None) -> str:
         """Download an MP4 and return the saved path."""
+        if filename is None:
+            return dv_download_video(url, destination)
         return dv_download_video(url, destination, filename)
 
     def download_caption(self, url: str, destination: str, filename: str | None = None) -> str:
         """Download captions and return the saved path."""
+        if filename is None:
+            return dv_download_caption(url, destination)
         return dv_download_caption(url, destination, filename)
 
     # ------------------------------------------------------------------

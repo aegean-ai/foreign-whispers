@@ -4,14 +4,15 @@ import copy
 import pathlib
 from pathlib import Path
 
-from api.src.services import translation_engine as _te
-
-
 def download_and_install_package(from_code: str, to_code: str):
+    from api.src.services import translation_engine as _te
+
     return _te.download_and_install_package(from_code, to_code)
 
 
 def translate_sentence(text: str, from_code: str, to_code: str):
+    from api.src.services import translation_engine as _te
+
     return _te.translate_sentence(text, from_code, to_code)
 
 
@@ -44,7 +45,7 @@ class TranslationService:
         result["language"] = to_code
         return result
 
-    def rerank_for_duration(
+    async def rerank_for_duration(
         self,
         en_transcript: dict,
         es_transcript: dict,

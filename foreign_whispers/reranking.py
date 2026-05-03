@@ -1,12 +1,13 @@
-"""Deterministic failure analysis and translation re-ranking stubs.
+"""Deterministic failure analysis and translation re-ranking helpers.
 
 The failure analysis function uses simple threshold rules derived from
-SegmentMetrics.  The translation re-ranking function is a **student assignment**
-— see the docstring for inputs, outputs, and implementation guidance.
+SegmentMetrics. The translation re-ranking function produces concise Spanish
+alternatives when a baseline translation is too long for the timing budget.
 """
 
 import dataclasses
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -105,14 +106,7 @@ def get_shorter_translations(
 ) -> list[TranslationCandidate]:
     """Return shorter translation candidates that fit *target_duration_s*.
 
-    .. admonition:: Student Assignment — Duration-Aware Translation Re-ranking
-
-       This function is intentionally a **stub that returns an empty list**.
-       Your task is to implement a strategy that produces shorter
-       target-language translations when the baseline translation is too long
-       for the time budget.
-
-       **Inputs**
+    **Inputs**
 
        ============== ======== ==================================================
        Parameter      Type     Description
@@ -124,43 +118,154 @@ def get_shorter_translations(
        context_next   str      Text of the following segment (for coherence)
        ============== ======== ==================================================
 
-       **Outputs**
+    **Outputs**
 
-       A list of ``TranslationCandidate`` objects, sorted shortest first.
-       Each candidate has:
+    A list of ``TranslationCandidate`` objects, sorted shortest first.
+    Each candidate has:
 
-       - ``text``: the shortened target-language translation
-       - ``char_count``: ``len(text)``
-       - ``brevity_rationale``: short note on what was changed
+    - ``text``: the shortened target-language translation
+    - ``char_count``: ``len(text)``
+    - ``brevity_rationale``: short note on what was changed
 
-       **Duration heuristic**: target-language TTS produces ~15 characters/second
-       (or ~4.5 syllables/second for Romance languages).  So a 3-second budget
-       ≈ 45 characters.
+    **Duration heuristic**: target-language TTS produces ~15 characters/second
+    (or ~4.5 syllables/second for Romance languages). So a 3-second budget
+    is roughly 45 characters.
 
-       **Approaches to consider** (pick one or combine):
+    **Approach**
 
-       1. **Rule-based shortening** — strip filler words, use shorter synonyms
-          from a lookup table, contract common phrases
-          (e.g. "en este momento" → "ahora").
-       2. **Multiple translation backends** — call argostranslate with
-          paraphrased input, or use a second translation model, then pick
-          the shortest output that preserves meaning.
-       3. **LLM re-ranking** — use an LLM (e.g. via an API) to generate
-          condensed alternatives.  This was the previous approach but adds
-          latency, cost, and a runtime dependency.
-       4. **Hybrid** — rule-based first, fall back to LLM only for segments
-          that still exceed the budget.
+    Uses deterministic heuristics: phrase compaction, filler-word removal,
+    clause selection, and budget-aware truncation.
 
-       **Evaluation criteria**: the caller selects the candidate whose
-       ``len(text) / 15.0`` is closest to ``target_duration_s``.
+    The caller can then choose whichever candidate best balances brevity and
+    semantic preservation for the available duration.
 
     Returns:
-        Empty list (stub).  Implement to return ``TranslationCandidate`` items.
+        Shorter translation candidates. Returns an empty list when the baseline
+        already fits the timing budget or no useful shortening is available.
     """
+    def _normalize(text: str) -> str:
+        text = re.sub(r"\s+", " ", text or "").strip()
+        text = re.sub(r"\s+([,.;:!?])", r"\1", text)
+        return text
+
+    def _phrase_rewrite(text: str) -> str:
+        replacements = [
+            ("en este momento", "ahora"),
+            ("en este instante", "ahora"),
+            ("debido a que", "porque"),
+            ("a causa de", "por"),
+            ("con el fin de", "para"),
+            ("de manera que", "así que"),
+            ("sin embargo", "pero"),
+            ("no obstante", "pero"),
+            ("por lo tanto", "así que"),
+            ("de hecho", ""),
+            ("realmente", ""),
+            ("básicamente", ""),
+            ("en realidad", ""),
+            ("tiene que", "debe"),
+            ("tienen que", "deben"),
+            ("va a", ""),
+            ("vamos a", ""),
+        ]
+        updated = text
+        for old, new in replacements:
+            updated = re.sub(rf"\b{re.escape(old)}\b", new, updated, flags=re.IGNORECASE)
+        return _normalize(updated)
+
+    def _drop_fillers(text: str, budget_chars: int | None = None) -> str:
+        filler_words = {
+            "el", "la", "los", "las", "un", "una", "unos", "unas",
+            "que", "de", "del", "al", "muy", "más", "ya", "pues",
+            "entonces", "realmente", "bastante", "simplemente",
+        }
+        words = text.split()
+        kept = words[:]
+        if budget_chars is None:
+            budget_chars = max(1, len(text) - 1)
+
+        while len(" ".join(kept)) > budget_chars:
+            removed = False
+            for idx in range(len(kept) - 1, -1, -1):
+                token = re.sub(r"^[^\wáéíóúüñ]+|[^\wáéíóúüñ]+$", "", kept[idx].lower())
+                if token in filler_words and len(kept) > 1:
+                    kept.pop(idx)
+                    removed = True
+                    break
+            if removed:
+                continue
+            if len(kept) <= 1:
+                break
+            kept.pop()
+
+        return _normalize(" ".join(kept))
+
+    def _main_clause(text: str, budget_chars: int) -> str:
+        clauses = [
+            _normalize(part)
+            for part in re.split(r"[,:;()\-\u2014]+", text)
+            if _normalize(part)
+        ]
+        if not clauses:
+            return text
+        for clause in clauses:
+            if len(clause) <= budget_chars:
+                return clause
+        return min(clauses, key=len)
+
+    def _truncate_to_budget(text: str, budget_chars: int) -> str:
+        if len(text) <= budget_chars:
+            return text
+        words = text.split()
+        while words and len(" ".join(words)) > budget_chars:
+            words.pop()
+        truncated = _normalize(" ".join(words))
+        if truncated:
+            return truncated
+        return _normalize(text[:budget_chars].rstrip(" ,.;:!?"))
+
+    def _candidate(text: str, rationale: str) -> TranslationCandidate | None:
+        cleaned = _normalize(text)
+        if not cleaned or cleaned == baseline or len(cleaned) >= len(baseline):
+            return None
+        return TranslationCandidate(
+            text=cleaned,
+            char_count=len(cleaned),
+            brevity_rationale=rationale,
+        )
+
+    baseline = _normalize(baseline_es)
+    if not baseline or target_duration_s <= 0:
+        return []
+
+    budget_chars = max(1, int(target_duration_s * 15))
+    if len(baseline) <= budget_chars:
+        logger.info(
+            "get_shorter_translations skipped for %.1fs budget (%d chars baseline fits).",
+            target_duration_s,
+            len(baseline),
+        )
+        return []
+
+    raw_candidates = [
+        _candidate(_phrase_rewrite(baseline), "shortened common phrases"),
+        _candidate(_drop_fillers(_phrase_rewrite(baseline), budget_chars), "removed optional filler words"),
+        _candidate(_main_clause(_phrase_rewrite(baseline), budget_chars), "kept the shortest main clause"),
+        _candidate(_truncate_to_budget(_drop_fillers(_phrase_rewrite(baseline), budget_chars), budget_chars), "trimmed to fit the duration budget"),
+    ]
+
+    deduped: dict[str, TranslationCandidate] = {}
+    for item in raw_candidates:
+        if item is not None:
+            deduped[item.text] = item
+
+    candidates = sorted(deduped.values(), key=lambda c: (c.char_count, c.text))
+
     logger.info(
-        "get_shorter_translations called for %.1fs budget (%d chars baseline) — "
-        "returning empty list (student assignment stub).",
+        "get_shorter_translations produced %d candidates for %.1fs budget (%d→%d chars).",
+        len(candidates),
         target_duration_s,
-        len(baseline_es),
+        len(baseline),
+        budget_chars,
     )
-    return []
+    return candidates
