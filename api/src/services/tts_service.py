@@ -41,7 +41,7 @@ class TTSService:
             output_path,
             self.tts_engine,
             alignment=alignment,
-            speaker_wav=speaker_wav,
+            #speaker_wav=speaker_wav,
         )
 
     def _attach_reference_voices(

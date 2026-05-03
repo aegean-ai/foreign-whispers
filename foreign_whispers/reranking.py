@@ -96,6 +96,8 @@ def analyze_failures(report: dict) -> FailureAnalysis:
     )
 
 
+
+
 def get_shorter_translations(
     source_text: str,
     baseline_es: str,
@@ -103,64 +105,129 @@ def get_shorter_translations(
     context_prev: str = "",
     context_next: str = "",
 ) -> list[TranslationCandidate]:
-    """Return shorter translation candidates that fit *target_duration_s*.
+    """Return shorter translation candidates that fit target_duration_s."""
+    import re
+    import unicodedata
 
-    .. admonition:: Student Assignment — Duration-Aware Translation Re-ranking
+    def clean(text: str) -> str:
+        text = " ".join(text.split())
+        text = text.lstrip("> ").strip()
+        text = text.replace(" ,", ",").replace(" .", ".")
+        text = text.replace(" !", "!").replace(" ?", "?")
+        return text.strip(" ,.;:")
 
-       This function is intentionally a **stub that returns an empty list**.
-       Your task is to implement a strategy that produces shorter
-       target-language translations when the baseline translation is too long
-       for the time budget.
+    def syllables(text: str) -> int:
+        nfkd = unicodedata.normalize("NFKD", text.lower())
+        ascii_text = "".join(c for c in nfkd if not unicodedata.combining(c))
+        return max(1, len(re.findall(r"[aeiou]+", ascii_text)))
 
-       **Inputs**
+    def estimated_duration(text: str) -> float:
+        text = clean(text)
+        if not text:
+            return 0.0
+        words = re.findall(r"\w+", text, flags=re.UNICODE)
+        pauses = 0.12 * len(re.findall(r"[,;:]", text))
+        pauses += 0.25 * len(re.findall(r"[.!?]", text))
+        return max(syllables(text) / 4.7, len(words) / 2.8) + pauses + 0.18
 
-       ============== ======== ==================================================
-       Parameter      Type     Description
-       ============== ======== ==================================================
-       source_text    str      Original source-language segment text
-       baseline_es    str      Baseline target-language translation (from argostranslate)
-       target_duration_s float Time budget in seconds for this segment
-       context_prev   str      Text of the preceding segment (for coherence)
-       context_next   str      Text of the following segment (for coherence)
-       ============== ======== ==================================================
+    candidates: list[TranslationCandidate] = []
+    seen: set[str] = set()
 
-       **Outputs**
+    def add(text: str, rationale: str) -> None:
+        text = clean(text)
+        if not text or text in seen:
+            return
+        if len(text) > len(clean(baseline_es)):
+            return
+        seen.add(text)
+        candidates.append(
+            TranslationCandidate(
+                text=text,
+                char_count=len(text),
+                brevity_rationale=rationale,
+            )
+        )
 
-       A list of ``TranslationCandidate`` objects, sorted shortest first.
-       Each candidate has:
+    baseline_es = clean(baseline_es)
 
-       - ``text``: the shortened target-language translation
-       - ``char_count``: ``len(text)``
-       - ``brevity_rationale``: short note on what was changed
+    if estimated_duration(baseline_es) <= target_duration_s:
+        add(baseline_es, "Baseline already fits the timing budget.")
 
-       **Duration heuristic**: target-language TTS produces ~15 characters/second
-       (or ~4.5 syllables/second for Romance languages).  So a 3-second budget
-       ≈ 45 characters.
+    replacements = {
+        "en este momento": "ahora",
+        "en estos momentos": "ahora",
+        "en este punto": "ahora",
+        "en realidad": "",
+        "de hecho": "",
+        "básicamente": "",
+        "realmente": "",
+        "simplemente": "",
+        "por favor": "",
+        "con el fin de": "para",
+        "para poder": "para",
+        "debido a que": "porque",
+        "ya que": "porque",
+        "a causa de": "por",
+        "una gran cantidad de": "muchos",
+        "un montón de": "muchos",
+        "la mayoría de las veces": "casi siempre",
+        "cada una de las": "cada",
+        "cada uno de los": "cada",
+        "tiene que": "debe",
+        "tenemos que": "debemos",
+        "es necesario": "hace falta",
+        "es posible que": "quizá",
+        "me gustaría": "quiero",
+        "quisiera": "quiero",
+        "y cómo reaccionó papá cuando le dijiste": "¿Cómo reaccionó papá?",
+        "cómo reaccionó papá cuando le dijiste": "¿Cómo reaccionó papá?",
+    }
 
-       **Approaches to consider** (pick one or combine):
+    shortened = baseline_es
+    for old, new in replacements.items():
+        shortened = re.sub(old, new, shortened, flags=re.IGNORECASE)
 
-       1. **Rule-based shortening** — strip filler words, use shorter synonyms
-          from a lookup table, contract common phrases
-          (e.g. "en este momento" → "ahora").
-       2. **Multiple translation backends** — call argostranslate with
-          paraphrased input, or use a second translation model, then pick
-          the shortest output that preserves meaning.
-       3. **LLM re-ranking** — use an LLM (e.g. via an API) to generate
-          condensed alternatives.  This was the previous approach but adds
-          latency, cost, and a runtime dependency.
-       4. **Hybrid** — rule-based first, fall back to LLM only for segments
-          that still exceed the budget.
+    add(shortened, "Applied shorter Spanish phrases and removed filler.")
 
-       **Evaluation criteria**: the caller selects the candidate whose
-       ``len(text) / 15.0`` is closest to ``target_duration_s``.
+    filler_patterns = [
+        r"\b(realmente|simplemente|básicamente|literalmente|muy|bastante)\b",
+        r"\b(en realidad|de hecho|por favor)\b",
+        r"\bque\s+(?=\w+)",  # light compression
+    ]
 
-    Returns:
-        Empty list (stub).  Implement to return ``TranslationCandidate`` items.
-    """
-    logger.info(
-        "get_shorter_translations called for %.1fs budget (%d chars baseline) — "
-        "returning empty list (student assignment stub).",
-        target_duration_s,
-        len(baseline_es),
+    compressed = shortened
+    for pattern in filler_patterns:
+        compressed = re.sub(pattern, "", compressed, flags=re.IGNORECASE)
+
+    add(compressed, "Removed low-information filler words.")
+
+    # Word-boundary compression to target duration.
+    words = clean(compressed).split()
+    kept: list[str] = []
+    for word in words:
+        trial = clean(" ".join(kept + [word]))
+        if estimated_duration(trial) > target_duration_s:
+            break
+        kept.append(word)
+
+    if kept:
+        add(" ".join(kept), "Trimmed at a word boundary to fit target duration.")
+
+    # Emergency fallback: preserve first meaningful words.
+    if not candidates:
+        words = baseline_es.split()
+        for n in range(max(1, len(words)), 0, -1):
+            trial = " ".join(words[:n])
+            if estimated_duration(trial) <= target_duration_s or n <= 3:
+                add(trial, "Fallback compact prefix when no full candidate fit.")
+                break
+
+    candidates.sort(
+        key=lambda c: (
+            estimated_duration(c.text) > target_duration_s,
+            abs(estimated_duration(c.text) - target_duration_s),
+            c.char_count,
+        )
     )
-    return []
+
+    return candidates

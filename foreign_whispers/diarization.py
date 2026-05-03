@@ -25,9 +25,19 @@ def diarize_audio(audio_path: str, hf_token: str | None = None) -> list[dict]:
         return []
 
     try:
+        import torchaudio
+
+        if not hasattr(torchaudio, "AudioMetaData"):
+            try:
+                from torchaudio._backend.common import AudioMetaData
+                torchaudio.AudioMetaData = AudioMetaData
+            except Exception:
+                pass
+
         from pyannote.audio import Pipeline
-    except (ImportError, TypeError):
-        logger.warning("pyannote.audio not installed — returning empty diarization.")
+
+    except (ImportError, TypeError, AttributeError) as exc:
+        logger.warning("pyannote.audio not usable — returning empty diarization: %s", exc)
         return []
 
     try:
