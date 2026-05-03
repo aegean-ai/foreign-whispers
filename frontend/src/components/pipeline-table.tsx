@@ -13,6 +13,7 @@ import {
   DownloadIcon,
   MicIcon,
   LanguagesIcon,
+  UsersIcon,
   Volume2Icon,
   ScissorsIcon,
 } from "lucide-react";
@@ -28,6 +29,7 @@ const STAGES: {
 }[] = [
   { key: "download", label: "Download", icon: DownloadIcon, description: "Fetch video + captions from YouTube" },
   { key: "transcribe", label: "Transcribe", icon: MicIcon, description: "Speech-to-text via Whisper" },
+  { key: "diarize", label: "Diarize", icon: UsersIcon, description: "Speaker diarization via pyannote" },
   { key: "translate", label: "Translate", icon: LanguagesIcon, description: "English to Spanish translation" },
   { key: "tts", label: "TTS", icon: Volume2Icon, description: "Text-to-speech synthesis" },
   { key: "stitch", label: "Stitch", icon: ScissorsIcon, description: "Combine audio + video + subtitles" },
@@ -106,6 +108,8 @@ export function PipelineTable({ pipelineState, settings }: PipelineTableProps) {
         return pipelineState.videoId ?? "--";
       case "transcribe":
         return "faster-whisper-medium";
+      case "diarize":
+        return settings.diarization.join(", ") || "pyannote";
       case "translate":
         return "argostranslate";
       case "tts": {

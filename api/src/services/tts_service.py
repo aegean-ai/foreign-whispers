@@ -43,3 +43,21 @@ class TTSService:
         from foreign_whispers.alignment import compute_segment_metrics, global_align
         metrics = compute_segment_metrics(en_transcript, es_transcript)
         return global_align(metrics, silence_regions, max_stretch)
+    
+    def text_file_to_speech_with_speakers(
+    self,
+    source_path: str,
+    output_path: str,
+    speaker_voice_map: dict[str, str],
+    *,
+    alignment: bool | None = None,
+    ) -> None:
+        """Generate TTS audio with per-speaker voice selection."""
+        from api.src.services.tts_engine import text_file_to_speech as tts_text_file_to_speech
+        tts_text_file_to_speech(
+            source_path,
+            output_path,
+            self.tts_engine,
+            alignment=alignment,
+            speaker_voice_map=speaker_voice_map,
+        )
