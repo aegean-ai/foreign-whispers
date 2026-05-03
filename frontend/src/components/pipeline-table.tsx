@@ -12,6 +12,7 @@ import {
 import {
   DownloadIcon,
   MicIcon,
+  UsersIcon,
   LanguagesIcon,
   Volume2Icon,
   ScissorsIcon,
@@ -28,6 +29,7 @@ const STAGES: {
 }[] = [
   { key: "download", label: "Download", icon: DownloadIcon, description: "Fetch video + captions from YouTube" },
   { key: "transcribe", label: "Transcribe", icon: MicIcon, description: "Speech-to-text via Whisper" },
+  { key: "diarize", label: "Diarize", icon: UsersIcon, description: "Detect speakers and label transcript segments" },
   { key: "translate", label: "Translate", icon: LanguagesIcon, description: "English to Spanish translation" },
   { key: "tts", label: "TTS", icon: Volume2Icon, description: "Text-to-speech synthesis" },
   { key: "stitch", label: "Stitch", icon: ScissorsIcon, description: "Combine audio + video + subtitles" },
@@ -108,6 +110,8 @@ export function PipelineTable({ pipelineState, settings }: PipelineTableProps) {
         return "faster-whisper-medium";
       case "translate":
         return "argostranslate";
+      case "diarize":
+        return settings.diarization.join(", ") || "Disabled";
       case "tts": {
         const parts: string[] = [];
         if (settings.dubbing.includes("aligned")) parts.push("Aligned");

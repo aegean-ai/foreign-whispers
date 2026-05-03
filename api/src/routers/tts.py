@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from api.src.core.config import settings
 from api.src.core.dependencies import resolve_title
 from api.src.services.tts_service import TTSService
+from foreign_whispers.voice_resolution import resolve_speaker_wav
 
 router = APIRouter(prefix="/api")
 
@@ -27,6 +28,10 @@ async def tts_endpoint(
     request: Request,
     config: str = Query(..., pattern=r"^c-[0-9a-f]{7}$"),
     alignment: bool = Query(False),
+    speaker_wav: str | None = Query(
+        default=None,
+        description="Reference voice WAV path (for example 'es/default.wav')",
+    ),
 ):
     """Generate TTS audio for a translated transcript.
 
@@ -55,10 +60,40 @@ async def tts_endpoint(
             "config": config,
         }
 
-    source_path = str(trans_dir / f"{title}.json")
+    trans_path = trans_dir / f"{title}.json"
+    if not trans_path.exists():
+        raise HTTPException(status_code=404, detail="Translated transcript not found")
+
+    voice_map: dict[str, str] | None = None
+    translated = json.loads(trans_path.read_text())
+    target_language = translated.get("language", "es")
+    segments = translated.get("segments", [])
+
+    if speaker_wav is None:
+        labeled_speakers = sorted({
+            str(segment.get("speaker"))
+            for segment in segments
+            if segment.get("speaker")
+        })
+        if labeled_speakers:
+            voice_map = {
+                speaker: resolve_speaker_wav(settings.speakers_dir, target_language, speaker)
+                for speaker in labeled_speakers
+            }
+            speaker_wav = resolve_speaker_wav(settings.speakers_dir, target_language)
+        else:
+            speaker_wav = resolve_speaker_wav(settings.speakers_dir, target_language)
+
+    source_path = str(trans_path)
 
     await _run_in_threadpool(
-        None, svc.text_file_to_speech, source_path, str(audio_dir), alignment=alignment
+        None,
+        svc.text_file_to_speech,
+        source_path,
+        str(audio_dir),
+        alignment=alignment,
+        speaker_wav=speaker_wav,
+        voice_map=voice_map,
     )
 
     return {

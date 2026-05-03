@@ -59,6 +59,8 @@ async def transcribe_endpoint(
 
     title = resolve_title(video_id)
     if title is None:
+        title = TranscriptionService.title_for_video_id(video_id, videos_dir)
+    if title is None:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found in index")
 
     transcript_path = transcriptions_dir / f"{title}.json"

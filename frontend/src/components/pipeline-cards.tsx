@@ -36,7 +36,7 @@ function formatDuration(ms: number): string {
 }
 
 function getActiveStageStartedAt(state: PipelineState): number | undefined {
-  const stages: PipelineStage[] = ["download", "transcribe", "translate", "tts", "stitch"];
+  const stages: PipelineStage[] = ["download", "transcribe", "diarize", "translate", "tts", "stitch"];
   for (const key of stages) {
     if (state.stages[key].status === "active") return state.stages[key].started_at;
   }

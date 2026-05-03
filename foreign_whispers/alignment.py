@@ -37,8 +37,25 @@ _SYLLABLE_RATE = 4.5  # syllables per second for Romance languages
 
 
 def _estimate_duration(text: str) -> float:
-    """Estimate TTS duration in seconds using a syllable-rate heuristic."""
-    return _count_syllables(text) / _SYLLABLE_RATE
+    """Estimate TTS duration in seconds from syllables plus pacing cues.
+
+    The syllable-rate estimate is the floor. We also fold in coarse
+    word/character pacing so punctuation-heavy or articulation-dense segments
+    are not systematically under-estimated.
+    """
+    cleaned = text.strip()
+    if not cleaned:
+        return 0.0
+
+    syllable_based = _count_syllables(cleaned) / _SYLLABLE_RATE
+    words = re.findall(r"\b[\w'-]+\b", cleaned, flags=re.UNICODE)
+    word_based = len(words) / 2.6 if words else 0.0
+    char_based = len(re.sub(r"\s+", "", cleaned)) / 13.5
+    pause_bonus = (
+        0.12 * sum(cleaned.count(mark) for mark in ".!?")
+        + 0.05 * sum(cleaned.count(mark) for mark in ",;:")
+    )
+    return max(syllable_based, word_based, char_based) + pause_bonus
 
 
 @dataclasses.dataclass
@@ -298,3 +315,126 @@ def global_align(
         cumulative_drift += gap_shift
 
     return aligned
+
+
+def global_align_dp(
+    metrics: list[SegmentMetrics],
+    silence_regions: list[dict],
+    max_stretch: float = 1.4,
+    beam_width: int = 12,
+) -> list[AlignedSegment]:
+    """Beam-search alignment that can trade off drift against later fit.
+
+    The greedy baseline always takes the locally preferred action. This helper
+    keeps several scheduling hypotheses alive and scores them by a simple
+    penalty function that prefers lower drift, fewer retries, and no overlaps.
+    """
+
+    def _silence_after(end_s: float) -> float:
+        for region in silence_regions:
+            if region.get("label") == "silence" and region["start_s"] >= end_s - 0.1:
+                return region["end_s"] - region["start_s"]
+        return 0.0
+
+    def _options(m: SegmentMetrics, available_gap_s: float) -> list[tuple[AlignAction, float, float]]:
+        options: list[tuple[AlignAction, float, float]] = []
+        if m.predicted_stretch <= 1.1:
+            options.append((AlignAction.ACCEPT, 0.0, 1.0))
+        if m.predicted_stretch <= max_stretch:
+            options.append((AlignAction.MILD_STRETCH, 0.0, min(m.predicted_stretch, max_stretch)))
+        if m.overflow_s > 0 and available_gap_s >= m.overflow_s:
+            options.append((AlignAction.GAP_SHIFT, m.overflow_s, 1.0))
+        if m.predicted_stretch <= 2.5:
+            options.append((AlignAction.REQUEST_SHORTER, 0.0, 1.0))
+        options.append((AlignAction.FAIL, 0.0, 1.0))
+
+        deduped: list[tuple[AlignAction, float, float]] = []
+        seen: set[tuple[str, int, int]] = set()
+        for action, gap_shift, stretch in options:
+            key = (action.value, int(round(gap_shift * 1000)), int(round(stretch * 1000)))
+            if key not in seen:
+                seen.add(key)
+                deduped.append((action, gap_shift, stretch))
+        return deduped
+
+    def _penalty(
+        m: SegmentMetrics,
+        action: AlignAction,
+        gap_shift: float,
+        stretch: float,
+        added_drift: float,
+        overlap_s: float,
+    ) -> float:
+        severity = max(m.predicted_stretch - 1.0, 0.0)
+        base = {
+            AlignAction.ACCEPT: 0.0,
+            AlignAction.MILD_STRETCH: 0.15 + severity,
+            AlignAction.GAP_SHIFT: 0.25 + gap_shift * 0.75,
+            AlignAction.REQUEST_SHORTER: 0.8 + m.overflow_s,
+            AlignAction.FAIL: 3.0 + m.overflow_s,
+        }[action]
+        stretch_penalty = max(stretch - 1.15, 0.0) * 0.4
+        drift_penalty = added_drift * 0.2
+        overlap_penalty = overlap_s * 50.0
+        return base + stretch_penalty + drift_penalty + overlap_penalty
+
+    if not metrics:
+        return []
+
+    states: list[tuple[float, float, float, list[AlignedSegment]]] = [
+        (0.0, 0.0, 0.0, [])
+    ]
+
+    for m in metrics:
+        available_gap_s = _silence_after(m.source_end)
+        expanded: list[tuple[float, float, float, list[AlignedSegment]]] = []
+
+        for cost, cumulative_drift, previous_end, path in states:
+            for action, gap_shift, stretch in _options(m, available_gap_s):
+                nominal_start = m.source_start + cumulative_drift
+                scheduled_start = max(nominal_start, previous_end)
+                overlap_s = max(0.0, previous_end - nominal_start)
+                scheduled_end = scheduled_start + m.source_duration_s + gap_shift
+                added_drift = (scheduled_end - m.source_end) - cumulative_drift
+                new_cost = cost + _penalty(
+                    m,
+                    action,
+                    gap_shift,
+                    stretch,
+                    max(added_drift, 0.0),
+                    overlap_s,
+                )
+                expanded.append((
+                    new_cost,
+                    cumulative_drift + max(added_drift, 0.0),
+                    scheduled_end,
+                    path + [AlignedSegment(
+                        index=m.index,
+                        original_start=m.source_start,
+                        original_end=m.source_end,
+                        scheduled_start=scheduled_start,
+                        scheduled_end=scheduled_end,
+                        text=m.translated_text,
+                        action=action,
+                        gap_shift_s=gap_shift,
+                        stretch_factor=stretch,
+                    )],
+                ))
+
+        expanded.sort(key=lambda item: (item[0], item[1]))
+        next_states: list[tuple[float, float, float, list[AlignedSegment]]] = []
+        seen_buckets: set[tuple[int, int]] = set()
+
+        for state in expanded:
+            _, drift, previous_end, path = state
+            bucket = (int(round(drift * 20)), int(round(previous_end * 20)))
+            if bucket in seen_buckets:
+                continue
+            seen_buckets.add(bucket)
+            next_states.append(state)
+            if len(next_states) >= beam_width:
+                break
+
+        states = next_states or expanded[:1]
+
+    return min(states, key=lambda item: item[0])[3]

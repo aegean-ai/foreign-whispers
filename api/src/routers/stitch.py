@@ -300,6 +300,10 @@ async def get_video(
 
     video_path = settings.dubbed_videos_dir / config / f"{title}.mp4"
     if not video_path.exists():
+        legacy_video_path = settings.dubbed_videos_dir / f"{title}.mp4"
+        if legacy_video_path.exists():
+            video_path = legacy_video_path
+    if not video_path.exists():
         raise HTTPException(status_code=404, detail="Dubbed video not yet generated")
 
     return _serve_video(video_path, request)

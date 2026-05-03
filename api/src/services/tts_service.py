@@ -1,5 +1,6 @@
 """HTTP-agnostic service wrapping TTS engine functions."""
 
+import inspect
 import pathlib
 from pathlib import Path
 from typing import Any
@@ -17,9 +18,30 @@ class TTSService:
         self.ui_dir = ui_dir
         self.tts_engine = tts_engine
 
-    def text_file_to_speech(self, source_path: str, output_path: str, *, alignment: bool | None = None) -> None:
+    def text_file_to_speech(
+        self,
+        source_path: str,
+        output_path: str,
+        *,
+        alignment: bool | None = None,
+        speaker_wav: str | None = None,
+        voice_map: dict[str, str] | None = None,
+    ) -> None:
         """Generate time-aligned TTS audio from a translated JSON transcript."""
-        tts_text_file_to_speech(source_path, output_path, self.tts_engine, alignment=alignment)
+        try:
+            supported = inspect.signature(tts_text_file_to_speech).parameters
+        except (TypeError, ValueError):
+            supported = {}
+
+        kwargs: dict[str, object] = {}
+        if alignment is not None and (not supported or "alignment" in supported):
+            kwargs["alignment"] = alignment
+        if speaker_wav is not None and (not supported or "speaker_wav" in supported):
+            kwargs["speaker_wav"] = speaker_wav
+        if voice_map is not None and (not supported or "voice_map" in supported):
+            kwargs["voice_map"] = voice_map
+
+        tts_text_file_to_speech(source_path, output_path, self.tts_engine, **kwargs)
 
     @staticmethod
     def title_for_video_id(video_id: str, search_dir: pathlib.Path) -> str | None:
