@@ -51,3 +51,69 @@ def clip_evaluation_report(
         "n_translation_retries":     n_retry,
         "total_cumulative_drift_s":  round(drift, 3),
     }
+
+
+def dubbing_scorecard(
+    metrics: list[SegmentMetrics],
+    aligned_segments: list[AlignedSegment],
+    align_report: dict,
+) -> dict:
+    """Multi-dimensional dubbing quality scorecard.
+
+    Each dimension is normalized to [0, 1] where 1.0 is best.
+
+    Dimensions:
+        timing_accuracy: Based on mean absolute duration error and severe stretch %.
+        naturalness: Speaking rate consistency across segments (low variance = good).
+        translation_efficiency: How many segments fit without retries or failure.
+        drift_score: How well cumulative drift is controlled (lower drift = better).
+
+    Args:
+        metrics: Per-segment timing metrics from compute_segment_metrics.
+        aligned_segments: Output of global_align or global_align_dp.
+        align_report: Dict from clip_evaluation_report.
+
+    Returns:
+        Dict with per-dimension scores [0, 1] and an overall score.
+    """
+    if not metrics or not aligned_segments:
+        return {
+            "timing_accuracy": 0.0,
+            "naturalness": 0.0,
+            "translation_efficiency": 0.0,
+            "drift_score": 0.0,
+            "overall": 0.0,
+        }
+
+    mean_err = align_report.get("mean_abs_duration_error_s", 0.0)
+    timing_accuracy = max(0.0, 1.0 - mean_err / 5.0)
+
+    stretch_factors = [a.stretch_factor for a in aligned_segments]
+    if len(stretch_factors) > 1:
+        variance = _stats.variance(stretch_factors)
+        naturalness = max(0.0, 1.0 - variance * 10)
+    else:
+        naturalness = 1.0
+
+    good_actions = {AlignAction.ACCEPT, AlignAction.MILD_STRETCH}
+    n_good = sum(1 for m in metrics if decide_action(m) in good_actions)
+    translation_efficiency = n_good / max(len(metrics), 1)
+
+    drift = abs(align_report.get("total_cumulative_drift_s", 0.0))
+    drift_score = max(0.0, 1.0 - drift / 10.0)
+
+    overall = round(
+        0.35 * timing_accuracy
+        + 0.25 * naturalness
+        + 0.25 * translation_efficiency
+        + 0.15 * drift_score,
+        3,
+    )
+
+    return {
+        "timing_accuracy": round(timing_accuracy, 3),
+        "naturalness": round(naturalness, 3),
+        "translation_efficiency": round(translation_efficiency, 3),
+        "drift_score": round(drift_score, 3),
+        "overall": overall,
+    }

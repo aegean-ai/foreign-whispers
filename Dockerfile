@@ -23,7 +23,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 COPY --chown=$USERNAME:$USERNAME pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project && \
+    uv sync --frozen --no-dev --group alignment --no-install-project && \
     chown -R $USERNAME:$USERNAME /app
 
 COPY --chown=$USERNAME:$USERNAME . .

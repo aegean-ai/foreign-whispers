@@ -17,9 +17,33 @@ class TTSService:
         self.ui_dir = ui_dir
         self.tts_engine = tts_engine
 
-    def text_file_to_speech(self, source_path: str, output_path: str, *, alignment: bool | None = None) -> None:
+    def text_file_to_speech(self, source_path: str, output_path: str, *, alignment: bool | None = None, speaker_wav: str | None = None, voice_map: dict | None = None) -> None:
         """Generate time-aligned TTS audio from a translated JSON transcript."""
-        tts_text_file_to_speech(source_path, output_path, self.tts_engine, alignment=alignment)
+        kwargs = {}
+        if alignment is not None:
+            kwargs["alignment"] = alignment
+        if speaker_wav:
+            kwargs["speaker_wav"] = speaker_wav
+        if voice_map:
+            kwargs["voice_map"] = voice_map
+        tts_text_file_to_speech(source_path, output_path, self.tts_engine, **kwargs)
+
+
+    @staticmethod
+    def build_speaker_voice_map(speakers: list[str], lang: str = "es") -> dict[str, str]:
+        """Map speaker labels to reference WAV files using round-robin assignment.
+
+        Scans pipeline_data/speakers/{lang}/ for WAV files, sorts them
+        alphabetically, then assigns SPEAKER_00 -> first WAV, SPEAKER_01 ->
+        second WAV, etc. Cycles back if there are more speakers than WAVs.
+        Returns an empty dict if no WAV files are found (uses default voice).
+        """
+        from pathlib import Path
+        speakers_dir = Path(__file__).parent.parent.parent.parent / "pipeline_data" / "speakers" / lang
+        wavs = sorted(speakers_dir.glob("*.wav"))
+        if not wavs:
+            return {}
+        return {speaker: str(wavs[i % len(wavs)]) for i, speaker in enumerate(sorted(speakers))}
 
     @staticmethod
     def title_for_video_id(video_id: str, search_dir: pathlib.Path) -> str | None:
