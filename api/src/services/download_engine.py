@@ -11,12 +11,26 @@ from youtube_transcript_api import YouTubeTranscriptApi
 # on the host use Chrome cookies directly.
 _COOKIES_FILE = os.getenv("YT_COOKIES_FILE", "/app/cookies.txt")
 
+
+def _valid_cookiefile(path: pathlib.Path) -> bool:
+    """Return True when path looks like a yt-dlp-compatible cookies file."""
+    if not path.is_file() or path.stat().st_size == 0:
+        return False
+
+    try:
+        first_line = path.read_text(encoding="utf-8", errors="ignore").splitlines()[0]
+    except IndexError:
+        return False
+
+    return first_line.startswith("# Netscape HTTP Cookie File")
+
 def _yt_dlp_opts(**extra):
     """Base yt-dlp options. Cookies are optional — yt-dlp works without them
     by using alternative YouTube clients (Android VR) that bypass n-challenge."""
     opts = {"quiet": True, "no_warnings": True}
-    if pathlib.Path(_COOKIES_FILE).exists():
-        opts["cookiefile"] = _COOKIES_FILE
+    cookie_path = pathlib.Path(_COOKIES_FILE)
+    if _valid_cookiefile(cookie_path):
+        opts["cookiefile"] = str(cookie_path)
     opts.update(extra)
     return opts
 
