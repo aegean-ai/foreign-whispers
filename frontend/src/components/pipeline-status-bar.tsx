@@ -6,12 +6,13 @@ import type { PipelineState, PipelineStage } from "@/lib/types";
 const STAGE_MESSAGES: Record<PipelineStage, string> = {
   download: "Downloading video and captions from YouTube...",
   transcribe: "Running faster-whisper-medium speech-to-text (this may take a while for long videos)...",
+  diarize: "Running pyannote speaker diarization...",
   translate: "Translating source → target language via argostranslate...",
   tts: "Synthesizing target-language speech via Chatterbox TTS...",
   stitch: "Stitching audio, video, and subtitles with ffmpeg...",
 };
 
-const STAGE_ORDER: PipelineStage[] = ["download", "transcribe", "translate", "tts", "stitch"];
+const STAGE_ORDER: PipelineStage[] = ["download", "transcribe", "diarize", "translate", "tts", "stitch"];
 
 function formatElapsed(ms: number | undefined): string {
   if (ms == null) return "";
