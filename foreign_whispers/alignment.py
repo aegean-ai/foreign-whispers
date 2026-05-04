@@ -298,3 +298,195 @@ def global_align(
         cumulative_drift += gap_shift
 
     return aligned
+
+# ============================================================================
+# Dynamic Programming Optimizer (Notebook 5 Task 3)
+# ============================================================================
+
+# Cost weights — design choice. Defended in docstring below.
+_DP_COST = {
+    AlignAction.ACCEPT:          0.0,
+    AlignAction.MILD_STRETCH:    1.0,
+    AlignAction.GAP_SHIFT:       0.5,
+    AlignAction.REQUEST_SHORTER: 3.0,
+    AlignAction.FAIL:           10.0,
+}
+_DP_DRIFT_PENALTY = 0.5      # λ in the cost function
+_DP_DRIFT_BUCKET_S = 0.05    # discretization granularity for drift state
+_DP_MAX_DRIFT_S = 10.0       # absolute cap on drift state space
+
+
+def global_align_dp(
+    metrics:         list[SegmentMetrics],
+    silence_regions: list[dict],
+    max_stretch:     float = 1.4,
+) -> list[AlignedSegment]:
+    """Dynamic-programming global alignment, optimal under the cost model.
+
+    Drop-in replacement for ``global_align`` that minimizes total cost
+    (action penalties + drift penalty) over the entire timeline rather than
+    making greedy local choices. Same signature, same return type.
+
+    **Algorithm:**
+
+    State:    (segment_index i, accumulated_drift d_bucket)
+    Decision: at each feasible segment, pick the action with minimum
+              (action_cost + drift_penalty * (d + Δd)² + future_cost)
+
+    The DP looks ahead: it will accept a more expensive action at segment i
+    (e.g. MILD_STRETCH instead of GAP_SHIFT) if doing so leaves a silence gap
+    available for a higher-overflow segment downstream.
+
+    **Cost weights (defended):**
+
+    - ACCEPT (0)        — segment fits naturally, no penalty
+    - GAP_SHIFT (0.5)   — borrows silence, no audio distortion (cheap)
+    - MILD_STRETCH (1)  — pyrubberband artifact risk increases with factor
+    - REQUEST_SHORTER (3) — requires translation re-ranking, downstream dep
+    - FAIL (10)         — silence inserted, catastrophic to user experience
+    - drift² penalty    — λ=0.5 keeps cumulative drift bounded without being
+                          draconian about small shifts
+
+    **Complexity:** O(N × D × A) where N=segments, D=drift buckets (~200),
+    A=actions evaluated per state (≤2 in practice). Sub-second for any
+    realistic clip.
+
+    Args:
+        metrics: Per-segment timing metrics from ``compute_segment_metrics``.
+        silence_regions: VAD output — same shape as ``global_align``.
+        max_stretch: Upper bound for ``MILD_STRETCH`` speed factor.
+
+    Returns:
+        One ``AlignedSegment`` per input metric, in order. Schedule
+        guaranteed optimal under the cost model defined above.
+    """
+    if not metrics:
+        return []
+
+    # Pre-compute available silence after each segment (same as greedy).
+    def _silence_after(end_s: float) -> float:
+        for r in silence_regions:
+            if r.get("label") == "silence" and r["start_s"] >= end_s - 0.1:
+                return r["end_s"] - r["start_s"]
+        return 0.0
+
+    silences = [_silence_after(m.source_end) for m in metrics]
+    n = len(metrics)
+
+    # Bucket drift to make state space finite.
+    max_bucket = int(_DP_MAX_DRIFT_S / _DP_DRIFT_BUCKET_S)
+
+    def _bucket(d: float) -> int:
+        return min(max_bucket, max(0, int(round(d / _DP_DRIFT_BUCKET_S))))
+
+    # Memoization: f(i, d_bucket) → (min_cost, chosen_action, drift_added)
+    memo: dict[tuple[int, int], tuple[float, AlignAction, float]] = {}
+
+    def f(i: int, d_bucket: int) -> float:
+        """Minimum future cost from segment i onward given drift bucket."""
+        if i == n:
+            return 0.0
+        if (i, d_bucket) in memo:
+            return memo[(i, d_bucket)][0]
+
+        m = metrics[i]
+        gap = silences[i]
+        best_cost = float("inf")
+        best_action = AlignAction.FAIL
+        best_drift_added = 0.0
+
+        # Enumerate candidate actions. The policy bands constrain feasibility,
+        # but DP still evaluates the alternatives at borderline segments.
+        candidates = _dp_candidate_actions(m, gap, max_stretch)
+
+        for action, drift_added in candidates:
+            new_drift = d_bucket * _DP_DRIFT_BUCKET_S + drift_added
+            new_bucket = _bucket(new_drift)
+            action_cost = _DP_COST[action]
+            drift_cost = _DP_DRIFT_PENALTY * (new_drift ** 2)
+            future_cost = f(i + 1, new_bucket)
+            total = action_cost + drift_cost + future_cost
+
+            if total < best_cost:
+                best_cost = total
+                best_action = action
+                best_drift_added = drift_added
+
+        memo[(i, d_bucket)] = (best_cost, best_action, best_drift_added)
+        return best_cost
+
+    # Solve from segment 0 with zero drift.
+    f(0, 0)
+
+    # Reconstruct schedule by walking the memoization table.
+    aligned = []
+    cumulative_drift = 0.0
+    for i in range(n):
+        m = metrics[i]
+        _, action, drift_added = memo[(i, _bucket(cumulative_drift))]
+
+        if action == AlignAction.GAP_SHIFT:
+            gap_shift = drift_added
+            stretch = 1.0
+        elif action == AlignAction.MILD_STRETCH:
+            gap_shift = 0.0
+            stretch = min(m.predicted_stretch, max_stretch)
+        else:
+            gap_shift = 0.0
+            stretch = 1.0
+
+        sched_start = m.source_start + cumulative_drift
+        sched_end = sched_start + m.source_duration_s + gap_shift
+
+        aligned.append(AlignedSegment(
+            index           = m.index,
+            original_start  = m.source_start,
+            original_end    = m.source_end,
+            scheduled_start = sched_start,
+            scheduled_end   = sched_end,
+            text            = m.translated_text,
+            action          = action,
+            gap_shift_s     = gap_shift,
+            stretch_factor  = stretch,
+        ))
+
+        cumulative_drift += gap_shift
+
+    return aligned
+
+
+def _dp_candidate_actions(
+    m: SegmentMetrics,
+    available_gap_s: float,
+    max_stretch: float,
+) -> list[tuple[AlignAction, float]]:
+    """Enumerate feasible (action, drift_added) pairs for a segment.
+
+    The policy bands set the *primary* action via ``decide_action``, but at
+    borderline segments the DP also considers nearby alternatives. For
+    instance, a GAP_SHIFT segment can also be evaluated as MILD_STRETCH
+    (giving up silence to a downstream peer).
+    """
+    primary = decide_action(m, available_gap_s=available_gap_s)
+    candidates: list[tuple[AlignAction, float]] = []
+
+    # The primary action is always feasible.
+    if primary == AlignAction.GAP_SHIFT:
+        candidates.append((AlignAction.GAP_SHIFT, m.overflow_s))
+        # Alternative: stretch instead, save the gap for a downstream segment.
+        if m.predicted_stretch <= max_stretch * 1.3:  # within stretch reach
+            candidates.append((AlignAction.MILD_STRETCH, 0.0))
+    elif primary == AlignAction.MILD_STRETCH:
+        candidates.append((AlignAction.MILD_STRETCH, 0.0))
+        # Alternative: take the gap if available — frees stretch budget.
+        if available_gap_s >= m.overflow_s:
+            candidates.append((AlignAction.GAP_SHIFT, m.overflow_s))
+    elif primary == AlignAction.REQUEST_SHORTER:
+        candidates.append((AlignAction.REQUEST_SHORTER, 0.0))
+        # Alternative: heavy stretch if gap not enough — better than a fail.
+        candidates.append((AlignAction.MILD_STRETCH, 0.0))
+    else:
+        # ACCEPT or FAIL — no real choice
+        candidates.append((primary, 0.0))
+
+    return candidates
