@@ -157,10 +157,101 @@ def get_shorter_translations(
     Returns:
         Empty list (stub).  Implement to return ``TranslationCandidate`` items.
     """
+    CHARS_PER_SECOND = 15.0
+    char_budget = int(target_duration_s * CHARS_PER_SECOND)
+
+    # If baseline already fits the duration budget, no candidates needed.
+    if len(baseline_es) <= char_budget:
+        logger.info(
+            "Baseline %d chars fits %d-char budget; no shortening needed.",
+            len(baseline_es),
+            char_budget,
+        )
+        return []
+
+    candidates: list[TranslationCandidate] = []
+
+    # Strategy 1: Substitute long Spanish phrases with shorter equivalents.
+    # Curated list of common verbose constructions and their tighter forms.
+    PHRASE_SUBSTITUTIONS = {
+        "en este momento": "ahora",
+        "en estos momentos": "ahora",
+        "es decir": "o sea",
+        "sin embargo": "pero",
+        "no obstante": "pero",
+        "a pesar de": "pese a",
+        "con el fin de": "para",
+        "con el objeto de": "para",
+        "a través de": "por",
+        "por medio de": "por",
+        "de manera que": "para que",
+        "de modo que": "así que",
+        "debido a que": "porque",
+        "puesto que": "porque",
+        "ya que": "porque",
+        "tener que": "deber",
+        "estar en condiciones de": "poder",
+        "hacer referencia a": "mencionar",
+        "llevar a cabo": "hacer",
+        "dar inicio a": "iniciar",
+        "poner de manifiesto": "mostrar",
+        "tomar en consideración": "considerar",
+    }
+
+    substituted = baseline_es
+    substitutions_made = []
+    for verbose, tight in PHRASE_SUBSTITUTIONS.items():
+        if verbose in substituted.lower():
+            # Preserve original casing of first letter where possible
+            substituted = substituted.replace(verbose, tight)
+            substituted = substituted.replace(verbose.capitalize(), tight.capitalize())
+            substitutions_made.append(f"{verbose}→{tight}")
+
+    if substituted != baseline_es and len(substituted) < len(baseline_es):
+        candidates.append(TranslationCandidate(
+            text=substituted,
+            char_count=len(substituted),
+            brevity_rationale=f"phrase substitutions: {', '.join(substitutions_made)}",
+        ))
+
+    # Strategy 2: Strip Spanish filler/discourse markers.
+    FILLER_WORDS = [
+        "bueno, ", "pues, ", "entonces, ", "o sea, ", "este, ",
+        "digamos, ", "vamos, ", "mira, ", "fíjate, ",
+    ]
+
+    stripped = substituted  # build on top of strategy 1's result
+    fillers_removed = []
+    for filler in FILLER_WORDS:
+        if filler in stripped.lower():
+            stripped = stripped.replace(filler, "").replace(filler.capitalize(), "")
+            fillers_removed.append(filler.strip(", "))
+
+    if stripped != substituted and len(stripped) < len(substituted):
+        candidates.append(TranslationCandidate(
+            text=stripped,
+            char_count=len(stripped),
+            brevity_rationale=f"removed fillers: {', '.join(fillers_removed)}",
+        ))
+
+    # Strategy 3: Aggressive — drop trailing clauses after the last comma
+    # if the result still preserves the main predicate.
+    if "," in baseline_es:
+        truncated = baseline_es.rsplit(",", 1)[0].rstrip() + "."
+        if len(truncated) < len(baseline_es) and len(truncated) >= 10:
+            candidates.append(TranslationCandidate(
+                text=truncated,
+                char_count=len(truncated),
+                brevity_rationale="dropped trailing clause after final comma",
+            ))
+
+    # Sort shortest-first per docstring contract
+    candidates.sort(key=lambda c: c.char_count)
+
     logger.info(
-        "get_shorter_translations called for %.1fs budget (%d chars baseline) — "
-        "returning empty list (student assignment stub).",
-        target_duration_s,
+        "Generated %d candidate(s) for %d-char baseline (budget %d chars).",
+        len(candidates),
         len(baseline_es),
+        char_budget,
     )
-    return []
+    return candidates
