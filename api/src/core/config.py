@@ -63,6 +63,10 @@ class Settings(BaseSettings):
         return self.data_dir / "speakers"
     
     @property
+    def diarizations_dir(self) -> Path:
+        return self.data_dir / "diarizations"
+
+    @property
     def dubbed_captions_dir(self) -> Path:
         return self.data_dir / "dubbed_captions"
 
