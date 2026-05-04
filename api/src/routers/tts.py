@@ -56,9 +56,15 @@ async def tts_endpoint(
         }
 
     source_path = str(trans_dir / f"{title}.json")
+    speaker_voice_map = svc.build_round_robin_voice_map(source_path, settings.speakers_dir)
 
     await _run_in_threadpool(
-        None, svc.text_file_to_speech, source_path, str(audio_dir), alignment=alignment
+        None,
+        svc.text_file_to_speech,
+        source_path,
+        str(audio_dir),
+        alignment=alignment,
+        speaker_voice_map=speaker_voice_map,
     )
 
     return {

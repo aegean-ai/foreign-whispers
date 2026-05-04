@@ -70,6 +70,56 @@ def test_sidecar_segments_contain_speed_factor(tmp_path):
     assert "action" in seg0
 
 
+def test_text_file_to_speech_uses_segment_speaker_wavs(tmp_path, monkeypatch):
+    """Segment synthesis passes speaker_wav based on the transcript speaker label."""
+    from api.src.services.tts_engine import text_file_to_speech
+    import numpy as np
+    import soundfile as sf
+
+    monkeypatch.setenv("FW_TTS_WORKERS", "1")
+
+    es_dir = tmp_path / "translations" / "argos"
+    es_dir.mkdir(parents=True, exist_ok=True)
+    es_path = es_dir / "vid.json"
+    es_path.write_text(json.dumps({
+        "text": "Hola Adios",
+        "segments": [
+            {"start": 0.0, "end": 0.5, "text": "Hola", "speaker": "SPEAKER_00"},
+            {"start": 0.5, "end": 1.0, "text": "Adios", "speaker": "SPEAKER_01"},
+        ],
+    }))
+
+    source_wav = tmp_path / "source.wav"
+    sf.write(str(source_wav), np.zeros(2205, dtype=np.float32), 22050)
+
+    calls = []
+
+    def fake_tts(text, file_path, **kwargs):
+        import shutil
+        calls.append((text, kwargs.get("speaker_wav")))
+        shutil.copy(source_wav, file_path)
+
+    engine = MagicMock()
+    engine.tts_to_file.side_effect = fake_tts
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    text_file_to_speech(
+        str(es_path),
+        str(out_dir),
+        tts_engine=engine,
+        speaker_voice_map={
+            "SPEAKER_00": "es/voice_1.wav",
+            "SPEAKER_01": "es/voice_2.wav",
+        },
+    )
+
+    assert calls == [
+        ("Hola", "es/voice_1.wav"),
+        ("Adios", "es/voice_2.wav"),
+    ]
+
+
 def test_fw_alignment_off_uses_unclamped_range(tmp_path, monkeypatch):
     """FW_ALIGNMENT=off bypasses the [0.85, 1.25] clamp (uses legacy [0.1, 10])."""
     monkeypatch.setenv("FW_ALIGNMENT", "off")

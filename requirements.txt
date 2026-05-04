@@ -1,6 +1,6 @@
-torch>=2.0
-torchaudio>=2.0
-TTS @ git+https://github.com/idiap/coqui-ai-TTS@v0.24.2
+torch==2.5.1
+torchaudio==2.5.1
+coqui-tts @ git+https://github.com/idiap/coqui-ai-TTS@v0.24.2
 pytube
 youtube-transcript-api
 openai-whisper
@@ -15,3 +15,5 @@ requests
 setuptools<81
 numpy<2
 transformers<4.46
+sentencepiece
+sentence-transformers

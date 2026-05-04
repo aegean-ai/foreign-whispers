@@ -31,11 +31,22 @@ def diarize_audio(audio_path: str, hf_token: str | None = None) -> list[dict]:
         return []
 
     try:
+        logger.warning("start loading diarization pipeline...")
         pipeline    = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
             use_auth_token=hf_token,
         )
+        if pipeline is None:
+            logger.warning(
+                "Could not load pyannote/speaker-diarization-3.1. "
+                "Confirm the token can download gated files and that user "
+                "conditions are accepted for both pyannote/speaker-diarization-3.1 "
+                "and pyannote/segmentation-3.0."
+            )
+            return []
+        logger.warning("running diarization pipeline: audio_path=%s", audio_path)
         diarization = pipeline(audio_path)
+        logger.warning("diarization complete: %s", diarization)
         return [
             {"start_s": turn.start, "end_s": turn.end, "speaker": speaker}
             for turn, _, speaker in diarization.itertracks(yield_label=True)

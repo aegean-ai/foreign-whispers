@@ -61,6 +61,8 @@ services:
       args:
         USER_UID: "${UID:-1000}"
         USER_GID: "${GID:-1000}"
+    env_file:
+      - .env
     restart: unless-stopped
     command: ["uv", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8080"]
     ports:
@@ -81,6 +83,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        API_URL: http://api:8080
     restart: unless-stopped
     ports:
       - "8501:8501"

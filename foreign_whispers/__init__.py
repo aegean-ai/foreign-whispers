@@ -13,6 +13,7 @@ from foreign_whispers.alignment import (  # noqa: F401
     compute_segment_metrics,
     decide_action,
     global_align,
+    global_align_beam,
 )
 from foreign_whispers.backends import DurationAwareTTSBackend  # noqa: F401
 from foreign_whispers.client import ALIGNED, BASELINE, FWClient, config_id  # noqa: F401
@@ -27,6 +28,7 @@ __all__ = [
     "compute_segment_metrics",
     "decide_action",
     "global_align",
+    "global_align_beam",
     "DurationAwareTTSBackend",
     "detect_speech_activity",
     "diarize_audio",

@@ -5,7 +5,7 @@ import logging
 import os
 import re
 from functools import lru_cache
-
+from foreign_whispers.alignment import _estimate_duration
 logger = logging.getLogger(__name__)
 
 SPANISH_CHARS_PER_SECOND = 15.0
@@ -120,6 +120,8 @@ _SPANISH_SHORTENING_REPLACEMENTS = [
     (r"\bestá tratando de\b", "intenta", "'está tratando de' → 'intenta'"),
     (r"\bvoy a intentar\b", "intentaré", "future/periphrasis contraction"),
     (r"\bva a intentar\b", "intentará", "future/periphrasis contraction"),
+    (r"\bestán tratando de\b", "intentan", "'están tratando de' → 'intentan'"),
+    (r"\btratan de\b", "intentan", "'tratan de' → 'intentan'"),
 ]
 
 _SPANISH_FILLER_PATTERNS = [
@@ -140,6 +142,14 @@ _ENGLISH_FILLER_REPLACEMENTS = [
     (r"\bactually\b", ""),
 ]
 
+_TRAILING_WEAK_WORDS = {
+    "de", "del", "a", "al", "en", "con", "por", "para", "que", "y", "o", "e"
+}
+
+
+def _ends_with_weak_word(text: str) -> bool:
+    words = re.findall(r"\b\w+\b", text.lower())
+    return bool(words and words[-1] in _TRAILING_WEAK_WORDS)
 
 def _clean_text(text: str) -> str:
     """Normalize whitespace and punctuation spacing without changing words."""
@@ -306,6 +316,8 @@ def get_shorter_translations(
             return
         if not allow_over_budget and len(text) > max_chars:
             return
+        if _ends_with_weak_word(text):
+            return
         existing = candidates.get(text)
         if existing is None or len(rationale) > len(existing.brevity_rationale):
             candidates[text] = TranslationCandidate(
@@ -338,4 +350,11 @@ def get_shorter_translations(
 
     # The assignment asks for shortest first.  The caller can then choose the
     # candidate whose len(text) / 15 is closest to target_duration_s.
-    return sorted(candidates.values(), key=lambda c: (c.char_count, c.text.lower()))
+    return sorted(
+    candidates.values(),
+    key=lambda c: (
+        abs(_estimate_duration(c.text) - target_duration_s),
+        c.char_count,
+        c.text.lower(),
+    ),
+)

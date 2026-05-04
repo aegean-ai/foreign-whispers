@@ -209,9 +209,46 @@ class TestTTSService:
         svc = TTSService(ui_dir=tmp_path, tts_engine=mock_engine)
 
         with patch("api.src.services.tts_service.tts_text_file_to_speech") as mock:
-            svc.text_file_to_speech("/src/transcript.json", "/out/audio")
+            svc.text_file_to_speech(
+                "/src/transcript.json",
+                "/out/audio",
+                alignment=True,
+                speaker_voice_map={"SPEAKER_00": "es/voice_1.wav"},
+            )
 
-        mock.assert_called_once_with("/src/transcript.json", "/out/audio", mock_engine)
+        mock.assert_called_once_with(
+            "/src/transcript.json",
+            "/out/audio",
+            mock_engine,
+            alignment=True,
+            speaker_voice_map={"SPEAKER_00": "es/voice_1.wav"},
+        )
+
+    def test_build_round_robin_voice_map(self, tmp_path):
+        from api.src.services.tts_service import TTSService
+
+        speakers_dir = tmp_path / "speakers"
+        lang_dir = speakers_dir / "es"
+        lang_dir.mkdir(parents=True)
+        (lang_dir / "default.wav").write_bytes(b"RIFF" + b"\x00" * 40)
+        (lang_dir / "voice_1.wav").write_bytes(b"RIFF" + b"\x00" * 40)
+        (lang_dir / "voice_2.wav").write_bytes(b"RIFF" + b"\x00" * 40)
+
+        transcript = tmp_path / "translated.json"
+        transcript.write_text(json.dumps({
+            "language": "es",
+            "segments": [
+                {"start": 0.0, "end": 1.0, "text": "a", "speaker": "SPEAKER_02"},
+                {"start": 1.0, "end": 2.0, "text": "b", "speaker": "SPEAKER_00"},
+                {"start": 2.0, "end": 3.0, "text": "c", "speaker": "SPEAKER_01"},
+            ],
+        }))
+
+        assert TTSService.build_round_robin_voice_map(transcript, speakers_dir) == {
+            "SPEAKER_00": "es/voice_1.wav",
+            "SPEAKER_01": "es/voice_2.wav",
+            "SPEAKER_02": "es/voice_1.wav",
+        }
 
     def test_title_for_video_id(self, tmp_path):
         from api.src.services.tts_service import TTSService

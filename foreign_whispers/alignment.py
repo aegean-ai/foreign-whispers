@@ -37,8 +37,44 @@ _SYLLABLE_RATE = 4.5  # syllables per second for Romance languages
 
 
 def _estimate_duration(text: str) -> float:
-    """Estimate TTS duration in seconds using a syllable-rate heuristic."""
-    return _count_syllables(text) / _SYLLABLE_RATE
+    """Estimate TTS duration in seconds using a calibrated regression predictor.
+
+    Coefficients were fit against Chatterbox TTS ``raw_duration_s`` values.
+
+    Features:
+        1. intercept
+        2. character count
+        3. rough syllable count
+        4. comma count
+        5. period count
+        6. question mark count
+        7. exclamation mark count
+        8. word count
+    """
+    text = text.strip()
+    if not text:
+        return 0.0
+
+    chars = len(text)
+    syllables = _count_syllables(text)
+    commas = text.count(",")
+    periods = text.count(".")
+    questions = text.count("?")
+    exclamations = text.count("!")
+    words = len(text.split())
+
+    duration = (
+        0.40122243
+        + 0.02818310 * chars
+        - 0.03569762 * syllables
+        + 0.07096869 * commas
+        + 0.16215789 * periods
+        + 0.74645465 * questions
+        + 0.0 * exclamations
+        + 0.05826141 * words
+    )
+
+    return max(0.15, duration)
 
 
 @dataclasses.dataclass
@@ -298,3 +334,123 @@ def global_align(
         cumulative_drift += gap_shift
 
     return aligned
+def global_align_beam(
+    metrics: list[SegmentMetrics],
+    silence_regions: list[dict],
+    max_stretch: float = 1.4,
+    beam_width: int = 5,
+) -> list[AlignedSegment]:
+    """Beam-search global timeline alignment.
+
+    Unlike ``global_align()``, which greedily commits to one decision per
+    segment, this optimizer keeps several candidate schedules at each step.
+    It then returns the schedule with the lowest total cost.
+
+    The objective favors:
+    - accepting segments when possible
+    - using mild stretch before larger interventions
+    - using silence-gap shifts only when useful
+    - avoiding REQUEST_SHORTER and FAIL
+    - keeping cumulative drift small
+
+    This is intentionally lightweight: it avoids external optimization
+    libraries while still improving over a purely greedy search when local
+    choices conflict with later segments.
+    """
+
+    def _silence_after(end_s: float) -> float:
+        for r in silence_regions:
+            if r.get("label") == "silence" and r["start_s"] >= end_s - 0.1:
+                return r["end_s"] - r["start_s"]
+        return 0.0
+
+    def _action_cost(action: AlignAction, drift: float, gap_shift: float, stretch: float) -> float:
+        """Lower is better."""
+        cost = 0.0
+
+        if action == AlignAction.ACCEPT:
+            cost += 0.0
+        elif action == AlignAction.MILD_STRETCH:
+            cost += 1.0 + 3.0 * max(0.0, stretch - 1.0)
+        elif action == AlignAction.GAP_SHIFT:
+            cost += 1.5 + 2.0 * gap_shift
+        elif action == AlignAction.REQUEST_SHORTER:
+            cost += 20.0
+        elif action == AlignAction.FAIL:
+            cost += 100.0
+
+        # Penalize cumulative drift so the final timeline stays close to source.
+        cost += 0.25 * abs(drift)
+
+        return cost
+
+    # Each beam item is:
+    # (total_cost, cumulative_drift, aligned_segments_so_far)
+    beam = [(0.0, 0.0, [])]
+
+    for m in metrics:
+        next_beam = []
+        available_gap_s = _silence_after(m.source_end)
+
+        for total_cost, cumulative_drift, schedule in beam:
+            possible_actions = []
+
+            # Option 1: accept if it fits naturally.
+            if m.predicted_stretch <= 1.1:
+                possible_actions.append((AlignAction.ACCEPT, 0.0, 1.0))
+
+            # Option 2: mild stretch if within safe range.
+            if m.predicted_stretch <= max_stretch:
+                stretch = max(1.0, m.predicted_stretch)
+                possible_actions.append((AlignAction.MILD_STRETCH, 0.0, stretch))
+
+            # Option 3: borrow from following silence if enough gap exists.
+            if m.overflow_s > 0 and available_gap_s >= m.overflow_s:
+                possible_actions.append((AlignAction.GAP_SHIFT, m.overflow_s, 1.0))
+
+            # Option 4: request shorter translation.
+            if m.predicted_stretch <= 2.5:
+                possible_actions.append((AlignAction.REQUEST_SHORTER, 0.0, 1.0))
+
+            # Option 5: hard failure fallback.
+            possible_actions.append((AlignAction.FAIL, 0.0, 1.0))
+
+            # Remove duplicate actions that may appear when a segment fits.
+            deduped = {}
+            for action, gap_shift, stretch in possible_actions:
+                key = (action, round(gap_shift, 6), round(stretch, 6))
+                deduped[key] = (action, gap_shift, stretch)
+
+            for action, gap_shift, stretch in deduped.values():
+                sched_start = m.source_start + cumulative_drift
+                sched_end = sched_start + m.source_duration_s + gap_shift
+                new_drift = cumulative_drift + gap_shift
+
+                aligned = AlignedSegment(
+                    index=m.index,
+                    original_start=m.source_start,
+                    original_end=m.source_end,
+                    scheduled_start=sched_start,
+                    scheduled_end=sched_end,
+                    text=m.translated_text,
+                    action=action,
+                    gap_shift_s=gap_shift,
+                    stretch_factor=stretch,
+                )
+
+                step_cost = _action_cost(action, new_drift, gap_shift, stretch)
+                next_beam.append((
+                    total_cost + step_cost,
+                    new_drift,
+                    schedule + [aligned],
+                ))
+
+        # Keep only the best few partial schedules.
+        next_beam.sort(key=lambda item: item[0])
+        beam = next_beam[:beam_width]
+
+    if not beam:
+        return []
+
+    best_cost, best_drift, best_schedule = min(beam, key=lambda item: item[0])
+    return best_schedule

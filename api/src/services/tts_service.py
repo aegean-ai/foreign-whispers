@@ -1,5 +1,6 @@
 """HTTP-agnostic service wrapping TTS engine functions."""
 
+import json
 import pathlib
 from pathlib import Path
 from typing import Any
@@ -17,9 +18,53 @@ class TTSService:
         self.ui_dir = ui_dir
         self.tts_engine = tts_engine
 
-    def text_file_to_speech(self, source_path: str, output_path: str, *, alignment: bool | None = None) -> None:
+    def text_file_to_speech(
+        self,
+        source_path: str,
+        output_path: str,
+        *,
+        alignment: bool | None = None,
+        speaker_voice_map: dict[str, str] | None = None,
+    ) -> None:
         """Generate time-aligned TTS audio from a translated JSON transcript."""
-        tts_text_file_to_speech(source_path, output_path, self.tts_engine, alignment=alignment)
+        tts_text_file_to_speech(
+            source_path,
+            output_path,
+            self.tts_engine,
+            alignment=alignment,
+            speaker_voice_map=speaker_voice_map,
+        )
+
+    @staticmethod
+    def build_round_robin_voice_map(source_path: str | Path, speakers_dir: Path) -> dict[str, str]:
+        """Assign labeled speakers to language reference WAVs in sorted round-robin order.
+
+        Uses non-default WAV files first. If a language only has default.wav, every
+        speaker maps to that file; if the language has no WAVs, falls back to the
+        global default.wav when present.
+        """
+        transcript = json.loads(Path(source_path).read_text())
+        segments = transcript.get("segments", [])
+        speakers = sorted({seg.get("speaker") for seg in segments if seg.get("speaker")})
+        if not speakers:
+            return {}
+
+        language = transcript.get("language") or "es"
+        lang_dir = speakers_dir / language
+        wavs = sorted(lang_dir.glob("*.wav")) if lang_dir.exists() else []
+        non_default_wavs = [wav for wav in wavs if wav.name != "default.wav"]
+        voice_wavs = non_default_wavs or wavs
+
+        if not voice_wavs:
+            default_wav = speakers_dir / "default.wav"
+            if not default_wav.exists():
+                return {}
+            voice_wavs = [default_wav]
+
+        return {
+            speaker: str(voice_wavs[i % len(voice_wavs)].relative_to(speakers_dir))
+            for i, speaker in enumerate(speakers)
+        }
 
     @staticmethod
     def title_for_video_id(video_id: str, search_dir: pathlib.Path) -> str | None:
