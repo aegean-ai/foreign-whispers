@@ -33,12 +33,24 @@ def _count_syllables(text: str) -> int:
     return max(1, len(clusters))
 
 
-_SYLLABLE_RATE = 4.5  # syllables per second for Romance languages
+_SYLLABLE_RATE = 4.5   # syllables per second (Chatterbox on Spanish)
+_PAUSE_SENTENCE = 0.30  # seconds added per . ! ? boundary
+_PAUSE_CLAUSE = 0.15    # seconds added per , ; : boundary
 
 
 def _estimate_duration(text: str) -> float:
-    """Estimate TTS duration in seconds using a syllable-rate heuristic."""
-    return _count_syllables(text) / _SYLLABLE_RATE
+    """Estimate TTS duration in seconds using syllable rate + punctuation pauses.
+
+    Improves on a naive chars/second heuristic in two ways:
+    1. Syllable counting correlates more directly with speech duration than
+       character count (Spanish averages ~4.5 syllables/second on Chatterbox).
+    2. Punctuation-based pause estimation: TTS engines insert audible pauses at
+       sentence (.!?) and clause (,;:) boundaries that pure syllable rate ignores.
+    """
+    syllable_time = _count_syllables(text) / _SYLLABLE_RATE
+    sentence_pauses = len(re.findall(r"[.!?]", text)) * _PAUSE_SENTENCE
+    clause_pauses = len(re.findall(r"[,;:]", text)) * _PAUSE_CLAUSE
+    return syllable_time + sentence_pauses + clause_pauses
 
 
 @dataclasses.dataclass
