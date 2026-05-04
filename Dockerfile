@@ -28,4 +28,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY --chown=$USERNAME:$USERNAME . .
 
+RUN uv pip install --force-reinstall torch==2.1.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu121
+RUN uv pip install pyannote.audio==3.1.1
+
 USER $USERNAME

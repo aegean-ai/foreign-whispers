@@ -25,9 +25,19 @@ def diarize_audio(audio_path: str, hf_token: str | None = None) -> list[dict]:
         return []
 
     try:
+        import torchaudio
+
+        if not hasattr(torchaudio, "AudioMetaData"):
+            try:
+                from torchaudio._backend.common import AudioMetaData
+                torchaudio.AudioMetaData = AudioMetaData
+            except Exception:
+                pass
+
         from pyannote.audio import Pipeline
-    except (ImportError, TypeError):
-        logger.warning("pyannote.audio not installed — returning empty diarization.")
+
+    except (ImportError, TypeError, AttributeError) as exc:
+        logger.warning("pyannote.audio not usable — returning empty diarization: %s", exc)
         return []
 
     try:
@@ -43,3 +53,78 @@ def diarize_audio(audio_path: str, hf_token: str | None = None) -> list[dict]:
     except Exception as exc:
         logger.warning("Diarization failed for %s: %s", audio_path, exc)
         return []
+
+def _time_value(segment: dict, *keys: str) -> float | None:
+    """Return the first available timestamp from a segment."""
+    for key in keys:
+        value = segment.get(key)
+        if value is not None:
+            return float(value)
+    return None
+
+
+def _temporal_overlap(
+    a_start: float,
+    a_end: float,
+    b_start: float,
+    b_end: float,
+) -> float:
+    """Return overlap duration between two time intervals."""
+    return max(0.0, min(a_end, b_end) - max(a_start, b_start))
+
+
+def assign_speakers(
+    transcript_segments: list[dict],
+    diarization_segments: list[dict],
+) -> list[dict]:
+    """Assign speaker labels to transcript segments using temporal overlap.
+
+    If diarization is empty, default all transcript segments to SPEAKER_00.
+    Does not mutate the input transcript segments.
+    """
+    assigned: list[dict] = []
+
+    for transcript_segment in transcript_segments:
+        output_segment = dict(transcript_segment)
+
+        if not diarization_segments:
+            output_segment["speaker"] = "SPEAKER_00"
+            assigned.append(output_segment)
+            continue
+
+        seg_start = _time_value(transcript_segment, "start_s", "start")
+        seg_end = _time_value(transcript_segment, "end_s", "end")
+
+        if seg_start is None or seg_end is None:
+            output_segment["speaker"] = "SPEAKER_00"
+            assigned.append(output_segment)
+            continue
+
+        best_speaker = "SPEAKER_00"
+        best_overlap = -1.0
+        best_distance = float("inf")
+        seg_mid = (seg_start + seg_end) / 2.0
+
+        for diarization_segment in diarization_segments:
+            dia_start = _time_value(diarization_segment, "start_s", "start")
+            dia_end = _time_value(diarization_segment, "end_s", "end")
+            speaker = diarization_segment.get("speaker", "SPEAKER_00")
+
+            if dia_start is None or dia_end is None:
+                continue
+
+            overlap = _temporal_overlap(seg_start, seg_end, dia_start, dia_end)
+            dia_mid = (dia_start + dia_end) / 2.0
+            distance = abs(seg_mid - dia_mid)
+
+            if overlap > best_overlap or (
+                overlap == best_overlap and distance < best_distance
+            ):
+                best_overlap = overlap
+                best_distance = distance
+                best_speaker = speaker
+
+        output_segment["speaker"] = best_speaker
+        assigned.append(output_segment)
+
+    return assigned

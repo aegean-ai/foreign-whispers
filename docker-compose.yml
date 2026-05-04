@@ -63,15 +63,22 @@ services:
         USER_GID: "${GID:-1000}"
     restart: unless-stopped
     network_mode: host
-    command: ["uv", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8080"]
+    #command: ["uv", "run", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8080"]
+    command: ["uv", "run", "--no-sync", "uvicorn", "api.src.main:app", "--host", "0.0.0.0", "--port", "8080"]
+    env_file:
+      - .env
     environment:
       - CHATTERBOX_API_URL=http://localhost:8020
       - FW_WHISPER_MODEL=base
+      - HF_TOKEN=${HF_TOKEN}
+      - FW_HF_TOKEN=${HF_TOKEN}
+      - LOGFIRE_TOKEN=${LOGFIRE_TOKEN}
+      - FW_LOGFIRE_WRITE_TOKEN=${LOGFIRE_TOKEN}
     volumes:
       - ./pipeline_data:/app/pipeline_data
       - ./foreign_whispers:/app/foreign_whispers
       - ./api:/app/api
-      - ./cookies.txt:/app/cookies.txt
+      # - ./cookies.txt:/app/cookies.txt
 
   # ── Frontend (Next.js) — all profiles ──────────────────────────────
   frontend:

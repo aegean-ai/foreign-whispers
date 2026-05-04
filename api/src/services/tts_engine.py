@@ -11,6 +11,7 @@ import librosa
 import soundfile as sf
 import pyrubberband
 from pydub import AudioSegment
+from api.src.core.config import settings
 
 # ── Chatterbox API configuration ─────────────────────────────────────
 CHATTERBOX_API_URL = os.getenv("CHATTERBOX_API_URL", "http://localhost:8020")
@@ -29,6 +30,125 @@ SPEED_MAX = 1.25
 _STRETCH_SKIP_RATIO = 0.5
 _SPEED_MIN_LEGACY = 0.1
 _SPEED_MAX_LEGACY = 10.0
+
+import re
+import html
+import unicodedata
+
+def _clean_tts_text(text: str) -> str:
+    if not text:
+        return ""
+
+    text = html.unescape(text)
+    text = unicodedata.normalize("NFKC", text)
+
+    # remove speaker / transcript markers
+    text = re.sub(r"^>+\s*", "", text)
+    text = re.sub(r"\[[^\]]+\]", "", text)   # [Aplausos]
+    text = re.sub(r'["“”]', '"', text)
+
+    # remove obvious junk chars but keep normal Spanish punctuation
+    text = re.sub(r"[^0-9A-Za-zÁÉÍÓÚáéíóúÑñÜü.,!?¿¡:;'%()\-\" ]+", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _looks_incomplete(text: str) -> bool:
+    text = (text or "").strip()
+    if not text:
+        return True
+
+    # if it does not end like a complete sentence, keep merging
+    if not re.search(r"[.!?…]$", text):
+        return True
+
+    # tiny fragments are unstable for TTS
+    words = text.split()
+    if len(words) <= 3:
+        return True
+
+    return False
+
+
+def _should_force_merge(text: str, duration_s: float) -> bool:
+    text = (text or "").strip()
+    if not text:
+        return True
+
+    words = text.split()
+
+    if len(text) < 45:
+        return True
+    if len(words) < 7:
+        return True
+    if duration_s < 3.5:
+        return True
+    if _looks_incomplete(text):
+        return True
+
+    return False
+
+
+def _merge_incomplete_neighboring_segments(
+    segments: list[dict],
+    max_chars: int = 220,
+    max_duration_s: float = 12.0,
+) -> list[dict]:
+    """Merge neighboring subtitle fragments into fuller TTS units.
+
+    Keeps original timing span by expanding start/end across merged segments.
+    """
+    if not segments:
+        return []
+
+    merged: list[dict] = []
+    i = 0
+
+    while i < len(segments):
+        current = dict(segments[i])
+        current["text"] = _clean_tts_text(current.get("text", ""))
+
+        if "id" not in current:
+            current["id"] = i
+
+        j = i + 1
+
+        while j < len(segments):
+            cur_text = _clean_tts_text(current.get("text", ""))
+            cur_duration = float(current["end"]) - float(current["start"])
+
+            # stop merging once this chunk is complete and substantial enough
+            if not _should_force_merge(cur_text, cur_duration):
+                break
+
+            nxt = segments[j]
+            nxt_text = _clean_tts_text(nxt.get("text", ""))
+
+            if not nxt_text:
+                current["end"] = nxt["end"]
+                j += 1
+                continue
+
+            proposed = f"{cur_text} {nxt_text}".strip() if cur_text else nxt_text
+            proposed_duration = float(nxt["end"]) - float(current["start"])
+
+            if len(proposed) > max_chars or proposed_duration > max_duration_s:
+                break
+
+            current["text"] = proposed
+            current["end"] = nxt["end"]
+            j += 1
+
+        if current["text"]:
+            merged.append(current)
+
+        i = j
+
+    # reindex for downstream code
+    for idx, seg in enumerate(merged):
+        seg["id"] = idx
+
+    return merged
 
 
 class ChatterboxClient:
@@ -125,38 +245,64 @@ class ChatterboxClient:
         return chunks if chunks else [text]
 
 
+# def _make_tts_engine():
+#     """Create TTS engine: Chatterbox API client if server is reachable, else local Coqui.
+
+#     Tries Chatterbox with a real /v1/audio/speech test call
+#     to ensure the model is fully loaded before committing.
+#     """
+#     try:
+#         client = ChatterboxClient()
+#         with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
+#             client.tts_to_file(text="prueba", file_path=tmp.name)
+#         print(f"[tts] Using Chatterbox GPU server at {CHATTERBOX_API_URL}")
+#         return client
+#     except Exception as exc:
+#         print(f"[tts] Chatterbox not available ({exc}), falling back to local Coqui")
+
+#     # Fallback: local Coqui TTS (for dev/test without Docker)
+#     import functools
+#     import torch
+#     from TTS.api import TTS as CoquiTTS
+#     # Coqui TTS checkpoints contain classes (RAdam, defaultdict, etc.) that
+#     # PyTorch 2.6+ rejects with weights_only=True.  Monkey-patch torch.load
+#     # to default to weights_only=False for these trusted model files.
+#     _original_torch_load = torch.load
+#     @functools.wraps(_original_torch_load)
+#     def _patched_load(*args, **kwargs):
+#         kwargs.setdefault("weights_only", False)
+#         return _original_torch_load(*args, **kwargs)
+#     torch.load = _patched_load
+#     device = "cuda" if torch.cuda.is_available() else "cpu"
+#     print(f"[tts] Using local Coqui TTS on {device}")
+#     return CoquiTTS(model_name="tts_models/es/mai/tacotron2-DDC", progress_bar=False).to(device)
 def _make_tts_engine():
-    """Create TTS engine: Chatterbox API client if server is reachable, else local Coqui.
-
-    Tries Chatterbox with a real /v1/audio/speech test call
-    to ensure the model is fully loaded before committing.
-    """
-    try:
-        client = ChatterboxClient()
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
-            client.tts_to_file(text="prueba", file_path=tmp.name)
-        print(f"[tts] Using Chatterbox GPU server at {CHATTERBOX_API_URL}")
+    """Create TTS engine according to settings."""
+    if settings.tts_backend == "remote":
+        client = ChatterboxClient(base_url=settings.chatterbox_api_url)
+        print(f"[tts] Using remote Chatterbox server at {settings.chatterbox_api_url}")
         return client
-    except Exception as exc:
-        print(f"[tts] Chatterbox not available ({exc}), falling back to local Coqui")
 
-    # Fallback: local Coqui TTS (for dev/test without Docker)
+    # local backend
     import functools
     import torch
     from TTS.api import TTS as CoquiTTS
-    # Coqui TTS checkpoints contain classes (RAdam, defaultdict, etc.) that
-    # PyTorch 2.6+ rejects with weights_only=True.  Monkey-patch torch.load
-    # to default to weights_only=False for these trusted model files.
+
     _original_torch_load = torch.load
+
     @functools.wraps(_original_torch_load)
     def _patched_load(*args, **kwargs):
         kwargs.setdefault("weights_only", False)
         return _original_torch_load(*args, **kwargs)
-    torch.load = _patched_load
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"[tts] Using local Coqui TTS on {device}")
-    return CoquiTTS(model_name="tts_models/es/mai/tacotron2-DDC", progress_bar=False).to(device)
 
+    torch.load = _patched_load
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"[tts] Using local Coqui TTS model {settings.tts_model_name} on {device}")
+    return CoquiTTS(
+        model_name=settings.tts_model_name,
+        progress_bar=False,
+    ).to(device)
 
 _tts_engine = None
 
@@ -196,15 +342,36 @@ def files_from_dir(dir_path) -> list:
     return es_files
 
 
-def _synthesize_raw(tts_engine, text: str, wav_path: str) -> bytes | None:
+def _synthesize_raw(
+    tts_engine,
+    text: str,
+    wav_path: str,
+    *,
+    seg_index: int | None = None,
+    original_text: str | None = None,
+) -> bytes | None:
     """GPU-bound: call TTS engine and return raw WAV bytes, or None on failure."""
     if not text or not text.strip():
+        print(f"[tts][seg {seg_index}] skipped: empty text after cleaning")
         return None
+
     try:
         tts_engine.tts_to_file(text=text, file_path=wav_path)
-        return pathlib.Path(wav_path).read_bytes()
+        data = pathlib.Path(wav_path).read_bytes()
+        print(
+            f"[tts][seg {seg_index}] ok: chars={len(text)} "
+            f"text={text[:120]!r}"
+        )
+        return data
     except Exception as exc:
-        print(f"[tts] TTS failed for segment ({exc}), using silence")
+        print(
+            f"[tts][seg {seg_index}] FAILED\n"
+            f"  exc_type={type(exc).__name__}\n"
+            f"  exc={exc}\n"
+            f"  cleaned={text[:200]!r}\n"
+            f"  original={(original_text or '')[:200]!r}\n"
+            f"  cleaned_len={len(text)}"
+        )
         return None
 
 
@@ -416,6 +583,8 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
     print(f"generating {save_name}...", end="")
 
     segments = segments_from_file(source_path)
+    segments = _merge_incomplete_neighboring_segments(segments)
+    merged_es_transcript = {"segments": segments}
 
     if not segments:
         text = text_from_file(source_path)
@@ -430,13 +599,14 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
         print(f" (applying {offset:.1f}s speech offset)", end="")
 
     # Pre-compute alignment; also returns flat metrics list for clip_evaluation_report
-    with open(source_path) as f:
-        es_transcript = json.load(f)
     en_transcript = _load_en_transcript(source_path)
+    merged_es_transcript = {"segments": segments}
+
     if use_alignment:
-        _metrics_list, align_map = _build_alignment(en_transcript, es_transcript)
+        _metrics_list, align_map = _build_alignment(en_transcript, merged_es_transcript)
     else:
         _metrics_list, align_map = [], {}
+
     _aligned_list = list(align_map.values())
 
     # ── Prepare per-segment metadata ────────────────────────────────────
@@ -446,7 +616,7 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
         stretch_factor = aligned_seg.stretch_factor if aligned_seg else 1.0
         target_sec = seg["end"] - seg["start"]
 
-        seg_text = seg["text"]
+        seg_text = _clean_tts_text(seg.get("text", ""))
         if aligned_seg is not None:
             from foreign_whispers.alignment import AlignAction
             if aligned_seg.action == AlignAction.REQUEST_SHORTER:
@@ -459,6 +629,7 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
         seg_metas.append({
             "index": i,
             "text": seg_text,
+            "original_text": seg.get("text", ""),
             "start": seg["start"],
             "end": seg["end"],
             "target_sec": target_sec,
@@ -475,13 +646,19 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
     raw_wav_map: dict[int, bytes | None] = {}
 
     with tempfile.TemporaryDirectory() as synth_dir:
-        def _do_synth(idx: int, text: str) -> tuple[int, bytes | None]:
+        def _do_synth(idx: int, text: str, original_text: str) -> tuple[int, bytes | None]:
             wav_path = str(pathlib.Path(synth_dir) / f"seg_{idx}.wav")
-            return idx, _synthesize_raw(engine, text, wav_path)
+            return idx, _synthesize_raw(
+                engine,
+                text,
+                wav_path,
+                seg_index=idx,
+                original_text=original_text,
+            )
 
         with ThreadPoolExecutor(max_workers=_TTS_WORKERS) as pool:
             futures = {
-                pool.submit(_do_synth, m["index"], m["text"]): m["index"]
+                pool.submit(_do_synth, m["index"], m["text"], m["original_text"]): m["index"]
                 for m in seg_metas
             }
             for fut in as_completed(futures):
@@ -512,6 +689,7 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
             aligned_seg = m["aligned_seg"]
             segment_details.append({
                 "index": i,
+                "original_text": m["original_text"],
                 "text": m["text"],
                 "target_sec": round(m["target_sec"], 3),
                 "stretch_factor": round(m["stretch_factor"], 3),
@@ -523,6 +701,34 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
             if seg_audio is not None:
                 combined += seg_audio
                 cursor_ms += len(seg_audio)
+
+        failed_segments = [
+            d for d in segment_details
+            if d["raw_duration_s"] == 0.0
+        ]
+
+        padded_segments = [
+            d for d in segment_details
+            if d["raw_duration_s"] > 0.0 and d["raw_duration_s"] < 0.7 * d["target_sec"]
+        ]
+
+        debug_payload = {
+            "tts_failed_segments": failed_segments,
+            "heavily_padded_segments": padded_segments,
+            "counts": {
+                "tts_failed": len(failed_segments),
+                "heavily_padded": len(padded_segments),
+                "total_segments": len(segment_details),
+            },
+        }
+
+        debug_path = pathlib.Path(output_path) / f"{pathlib.Path(source_path).stem}.tts_failures.json"
+        debug_path.write_text(
+            json.dumps(debug_payload, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        print(f"[tts] wrote failures file to: {debug_path}")
+
 
         save_path = pathlib.Path(output_path) / save_name
         combined.export(str(save_path), format="wav")
