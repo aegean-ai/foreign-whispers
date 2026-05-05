@@ -76,4 +76,4 @@ Visit `http://localhost:3000`, paste a YouTube URL, and the pipeline runs throug
 
 ## Tooling Note
 
-Claude (Sonnet 4.6 and Opus 4.7) was used as a coding collaborator throughout this project, consistent with the course's AI assistance policy. All commits include `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>` attribution lines.
+Claude (Sonnet 4.6 and Opus 4.7) was used as a coding collaborator throughout this project, with full attribution in commit messages. All commits include `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>` attribution lines.
