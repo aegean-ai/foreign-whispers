@@ -4,6 +4,7 @@ Extracted from notebooks/foreign_whispers_pipeline.ipynb (M8-align).
 Imports from foreign_whispers.alignment — no other dependencies.
 """
 import statistics as _stats
+from typing import Optional
 
 from foreign_whispers.alignment import (
     AlignAction,
@@ -50,4 +51,43 @@ def clip_evaluation_report(
         "n_gap_shifts":              n_shifted,
         "n_translation_retries":     n_retry,
         "total_cumulative_drift_s":  round(drift, 3),
+    }
+
+
+def dubbing_scorecard(
+    metrics: list[SegmentMetrics],
+    aligned: list[AlignedSegment],
+    align_report: Optional[dict] = None,
+) -> dict:
+    if not metrics:
+        return {k: 0.0 for k in
+                ("timing_score", "budget_compliance", "stretch_quality", "naturalness", "drift_score")}
+
+    mean_err = _stats.mean(abs(m.predicted_tts_s - m.source_duration_s) for m in metrics)
+    timing_score = max(0.0, 1.0 - mean_err / 3.0)
+
+    _ok = {AlignAction.ACCEPT, AlignAction.MILD_STRETCH}
+    budget_compliance = sum(1 for m in metrics if decide_action(m) in _ok) / len(metrics)
+
+    stretch_quality = sum(1 for a in aligned if a.stretch_factor <= 1.4) / max(len(aligned), 1)
+
+    rates = [
+        m.tgt_char_count / m.source_duration_s
+        for m in metrics if m.source_duration_s > 0.2
+    ]
+    if len(rates) >= 2:
+        rate_cv = _stats.stdev(rates) / max(_stats.mean(rates), 1e-6)
+        naturalness = max(0.0, 1.0 - rate_cv / 2.0)
+    else:
+        naturalness = 1.0
+
+    drift = abs(aligned[-1].scheduled_end - aligned[-1].original_end) if aligned else 0.0
+    drift_score = max(0.0, 1.0 - drift / 10.0)
+
+    return {
+        "timing_score":      round(timing_score, 3),
+        "budget_compliance": round(budget_compliance, 3),
+        "stretch_quality":   round(stretch_quality, 3),
+        "naturalness":       round(naturalness, 3),
+        "drift_score":       round(drift_score, 3),
     }

@@ -44,7 +44,7 @@ class TranslationService:
         result["language"] = to_code
         return result
 
-    def rerank_for_duration(
+    async def rerank_for_duration(
         self,
         en_transcript: dict,
         es_transcript: dict,

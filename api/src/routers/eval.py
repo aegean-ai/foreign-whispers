@@ -92,9 +92,9 @@ async def evaluate_endpoint(video_id: str):
     en_transcript = _load_transcript(en_dir, title)
     es_transcript = _load_transcript(es_dir, title)
 
-    from foreign_whispers.alignment import compute_segment_metrics, global_align
+    from foreign_whispers.alignment import compute_segment_metrics, global_align_dp
     metrics = compute_segment_metrics(en_transcript, es_transcript)
-    aligned = global_align(metrics, silence_regions=[])
+    aligned = global_align_dp(metrics, silence_regions=[])
 
     svc = AlignmentService(settings)
     report = svc.evaluate_clip(metrics, aligned)

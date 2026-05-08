@@ -51,6 +51,10 @@ class Settings(BaseSettings):
         return self.data_dir / "transcriptions" / self.stt_model_dir
 
     @property
+    def diarizations_dir(self) -> Path:
+        return self.data_dir / "diarizations"
+
+    @property
     def translations_dir(self) -> Path:
         return self.data_dir / "translations" / self.translation_model_dir
 
@@ -65,6 +69,10 @@ class Settings(BaseSettings):
     @property
     def dubbed_captions_dir(self) -> Path:
         return self.data_dir / "dubbed_captions"
+
+    @property
+    def speakers_dir(self) -> Path:
+        return self.base_dir / "pipeline_data" / "speakers"
 
     # S3 storage
     s3_bucket: str = ""

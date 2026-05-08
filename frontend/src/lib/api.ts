@@ -1,5 +1,6 @@
 import type {
   DownloadResponse,
+  DiarizeResponse,
   TranscribeResponse,
   TranslateResponse,
   TTSResponse,
@@ -37,6 +38,10 @@ export async function transcribeVideo(videoId: string, useYoutubeCaptions = true
   return fetchJson<TranscribeResponse>(`/api/transcribe/${videoId}${params}`, {
     method: "POST",
   });
+}
+
+export async function diarizeVideo(videoId: string): Promise<DiarizeResponse> {
+  return fetchJson<DiarizeResponse>(`/api/diarize/${videoId}`, { method: "POST" });
 }
 
 export async function translateVideo(

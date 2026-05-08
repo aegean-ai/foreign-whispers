@@ -19,6 +19,9 @@ import unicodedata
 from enum import Enum
 
 
+_DIPHTHONGS = re.compile(r"[iu][aeo]|[aeo][iu]|[iu][iu]")
+
+
 def _count_syllables(text: str) -> int:
     """Count syllables in target-language text via vowel-cluster counting.
 
@@ -29,16 +32,30 @@ def _count_syllables(text: str) -> int:
     # Normalise: decompose accented chars, keep only ASCII letters + spaces
     nfkd = unicodedata.normalize("NFKD", text.lower())
     ascii_text = "".join(c for c in nfkd if not unicodedata.combining(c))
+    ascii_text = re.sub(r"(?<=[aeiou])h(?=[aeiou])", "", ascii_text)
     clusters = re.findall(r"[aeiou]+", ascii_text)
-    return max(1, len(clusters))
+    syllables = 0
+    for cluster in clusters:
+        remaining = cluster
+        while remaining:
+            if len(remaining) >= 2 and _DIPHTHONGS.match(remaining[:2]):
+                syllables += 1
+                remaining = remaining[2:]
+            else:
+                syllables += 1
+                remaining = remaining[1:]
+    return max(1, syllables)
 
 
 _SYLLABLE_RATE = 4.5  # syllables per second for Romance languages
 
+_PAUSE_S = {".": 0.20, "!": 0.20, "?": 0.20, ";": 0.15,
+            ":": 0.12, ",": 0.08, "—": 0.10, "–": 0.08}
+
 
 def _estimate_duration(text: str) -> float:
     """Estimate TTS duration in seconds using a syllable-rate heuristic."""
-    return _count_syllables(text) / _SYLLABLE_RATE
+    return _count_syllables(text) / _SYLLABLE_RATE + sum(_PAUSE_S.get(ch, 0.0) for ch in text)
 
 
 @dataclasses.dataclass
@@ -137,7 +154,11 @@ class AlignedSegment:
     stretch_factor:  float = 1.0
 
 
-def decide_action(m: SegmentMetrics, available_gap_s: float = 0.0) -> AlignAction:
+def decide_action(
+    m: SegmentMetrics,
+    available_gap_s: float = 0.0,
+    tolerance_s: float = 0.0,
+) -> AlignAction:
     """Choose the alignment action for a single segment.
 
     Maps the predicted stretch factor to one of five actions using fixed
@@ -158,10 +179,16 @@ def decide_action(m: SegmentMetrics, available_gap_s: float = 0.0) -> AlignActio
         m: Timing metrics for one segment.
         available_gap_s: Silence duration (seconds) after this segment,
             from VAD.  Defaults to 0.0 (no gap available).
+        tolerance_s: Overflow (seconds) that is acceptable without any
+            fix.  Set to 0.3 for off-screen narration (Federico et al.
+            2020) where the listener tolerates ≤300 ms of slip.
+            Defaults to 0.0 (no tolerance, on-screen).
 
     Returns:
         The ``AlignAction`` to apply.
     """
+    if m.overflow_s <= tolerance_s:
+        return AlignAction.ACCEPT
     sf = m.predicted_stretch
     if sf <= 1.1:
         return AlignAction.ACCEPT
@@ -217,6 +244,7 @@ def global_align(
     metrics:         list[SegmentMetrics],
     silence_regions: list[dict],
     max_stretch:     float = 1.4,
+    off_screen:      bool  = True,
 ) -> list[AlignedSegment]:
     """Greedy left-to-right global alignment of dubbed segments.
 
@@ -257,10 +285,15 @@ def global_align(
         silence_regions: VAD output — list of ``{"start_s", "end_s", "label"}``
             dicts.  Pass ``[]`` if VAD is unavailable (gap_shift disabled).
         max_stretch: Upper bound for ``MILD_STRETCH`` speed factor.
+        off_screen: When True (default), applies a 300 ms overflow
+            tolerance per Federico et al. 2020 — suitable for 60 Minutes
+            interview content where the speaker is rarely on-screen.
 
     Returns:
         One ``AlignedSegment`` per input metric, in order.
     """
+    tolerance_s = 0.3 if off_screen else 0.0
+
     def _silence_after(end_s: float) -> float:
         for r in silence_regions:
             if r.get("label") == "silence" and r["start_s"] >= end_s - 0.1:
@@ -270,7 +303,7 @@ def global_align(
     aligned, cumulative_drift = [], 0.0
 
     for m in metrics:
-        action    = decide_action(m, available_gap_s=_silence_after(m.source_end))
+        action    = decide_action(m, available_gap_s=_silence_after(m.source_end), tolerance_s=tolerance_s)
         gap_shift = 0.0
         stretch   = 1.0
 
@@ -279,6 +312,106 @@ def global_align(
         elif action == AlignAction.MILD_STRETCH:
             stretch = min(m.predicted_stretch, max_stretch)
         # ACCEPT, REQUEST_SHORTER, FAIL → stretch stays at 1.0
+
+        sched_start = m.source_start + cumulative_drift
+        sched_end   = sched_start + m.source_duration_s + gap_shift
+
+        aligned.append(AlignedSegment(
+            index           = m.index,
+            original_start  = m.source_start,
+            original_end    = m.source_end,
+            scheduled_start = sched_start,
+            scheduled_end   = sched_end,
+            text            = m.translated_text,
+            action          = action,
+            gap_shift_s     = gap_shift,
+            stretch_factor  = stretch,
+        ))
+
+        cumulative_drift += gap_shift
+
+    return aligned
+
+
+def global_align_dp(
+    metrics:         list[SegmentMetrics],
+    silence_regions: list[dict],
+    max_stretch:     float = 1.4,
+    off_screen:      bool  = True,
+) -> list[AlignedSegment]:
+    """Two-pass alignment that reserves large gaps for the segments that need them most.
+
+    Improvement over ``global_align``: the greedy pass assigns silence gaps
+    left-to-right without considering future segments.  This implementation
+    pre-sorts available gaps by size and assigns the largest gap to the
+    segment with the largest overflow, then falls back to the greedy pass
+    for the remainder.
+
+    Algorithm:
+    1. First pass — collect all segments that would benefit from a gap shift
+       and all silence gaps, then assign greedily by overflow size (largest
+       overflow gets first pick of largest gap).
+    2. Second pass — left-to-right scheduling with pre-assigned gap shifts
+       applied, tracking cumulative drift.
+
+    Args:
+        metrics: Per-segment timing metrics from ``compute_segment_metrics``.
+        silence_regions: VAD silence regions ``[{start_s, end_s, label}]``.
+        max_stretch: Upper bound for ``MILD_STRETCH`` speed factor.
+        off_screen: When True (default), applies a 300 ms overflow
+            tolerance per Federico et al. 2020.  Segments within 300 ms
+            of their window are accepted without any fix, which eliminates
+            unnecessary gap-shifting for near-miss off-screen narration.
+
+    Returns:
+        One ``AlignedSegment`` per input metric, in order.
+    """
+    tolerance_s = 0.3 if off_screen else 0.0
+
+    def _gaps_after(end_s: float) -> list[dict]:
+        return [
+            r for r in silence_regions
+            if r.get("label") == "silence" and r["start_s"] >= end_s - 0.1
+        ]
+
+    def _gap_size(end_s: float) -> float:
+        gaps = _gaps_after(end_s)
+        return (gaps[0]["end_s"] - gaps[0]["start_s"]) if gaps else 0.0
+
+    # Pass 1 — decide which segments get gap shifts, largest overflow first
+    gap_shift_map: dict[int, float] = {}
+    candidates = [
+        m for m in metrics
+        if m.overflow_s > tolerance_s
+        and 1.4 < m.predicted_stretch <= 1.8
+        and _gap_size(m.source_end) >= m.overflow_s
+    ]
+    candidates.sort(key=lambda m: -m.overflow_s)
+
+    used_gaps: set[float] = set()
+    for m in candidates:
+        gaps = _gaps_after(m.source_end)
+        for gap in sorted(gaps, key=lambda g: -(g["end_s"] - g["start_s"])):
+            gid = round(gap["start_s"], 3)
+            if gid not in used_gaps:
+                used_gaps.add(gid)
+                gap_shift_map[m.index] = m.overflow_s
+                break
+
+    # Pass 2 — schedule left-to-right with pre-assigned shifts
+    aligned, cumulative_drift = [], 0.0
+
+    for m in metrics:
+        if m.index in gap_shift_map:
+            action = AlignAction.GAP_SHIFT
+            gap_shift = gap_shift_map[m.index]
+            stretch = 1.0
+        else:
+            action = decide_action(m, available_gap_s=_gap_size(m.source_end), tolerance_s=tolerance_s)
+            gap_shift = 0.0
+            stretch = 1.0
+            if action == AlignAction.MILD_STRETCH:
+                stretch = min(m.predicted_stretch, max_stretch)
 
         sched_start = m.source_start + cumulative_drift
         sched_end   = sched_start + m.source_duration_s + gap_shift
