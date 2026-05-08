@@ -11,6 +11,7 @@ import type {
 } from "@/lib/types";
 import {
   downloadVideo,
+  diarizeVideo,
   transcribeVideo,
   translateVideo,
   synthesizeSpeech,
@@ -21,6 +22,7 @@ import { computeConfigEntries, type ConfigEntry } from "@/lib/config-id";
 const STAGES: PipelineStage[] = [
   "download",
   "transcribe",
+  "diarize",
   "translate",
   "tts",
   "stitch",
@@ -192,6 +194,11 @@ export function usePipeline() {
     try {
       const dl = await run("download", () => downloadVideo(video.url));
       await run("transcribe", () => transcribeVideo(dl.video_id, settings.useYoutubeCaptions));
+      if (settings.diarization.length > 0) {
+        await run("diarize", () => diarizeVideo(dl.video_id));
+      } else {
+        dispatch({ type: "STAGE_COMPLETE", stage: "diarize", result: null, duration_ms: 0, skipped: true });
+      }
       await run("translate", () => translateVideo(dl.video_id, "es"));
 
       // Run TTS + stitch for each config entry.

@@ -17,9 +17,19 @@ class TTSService:
         self.ui_dir = ui_dir
         self.tts_engine = tts_engine
 
-    def text_file_to_speech(self, source_path: str, output_path: str, *, alignment: bool | None = None) -> None:
+    def text_file_to_speech(
+        self,
+        source_path: str,
+        output_path: str,
+        *,
+        alignment: bool | None = None,
+        speaker_wav: str | None = None,
+    ) -> None:
         """Generate time-aligned TTS audio from a translated JSON transcript."""
-        tts_text_file_to_speech(source_path, output_path, self.tts_engine, alignment=alignment)
+        tts_text_file_to_speech(
+            source_path, output_path, self.tts_engine,
+            alignment=alignment, speaker_wav=speaker_wav,
+        )
 
     @staticmethod
     def title_for_video_id(video_id: str, search_dir: pathlib.Path) -> str | None:
@@ -40,6 +50,6 @@ class TTSService:
         Returns list[AlignedSegment].  Combines compute_segment_metrics and
         global_align into a single facade call for use by the align router.
         """
-        from foreign_whispers.alignment import compute_segment_metrics, global_align
+        from foreign_whispers.alignment import compute_segment_metrics, global_align_dp
         metrics = compute_segment_metrics(en_transcript, es_transcript)
-        return global_align(metrics, silence_regions, max_stretch)
+        return global_align_dp(metrics, silence_regions, max_stretch)

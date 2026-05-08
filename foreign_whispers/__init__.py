@@ -13,11 +13,12 @@ from foreign_whispers.alignment import (  # noqa: F401
     compute_segment_metrics,
     decide_action,
     global_align,
+    global_align_dp,
 )
 from foreign_whispers.backends import DurationAwareTTSBackend  # noqa: F401
 from foreign_whispers.client import ALIGNED, BASELINE, FWClient, config_id  # noqa: F401
 from foreign_whispers.diarization import diarize_audio  # noqa: F401
-from foreign_whispers.evaluation import clip_evaluation_report  # noqa: F401
+from foreign_whispers.evaluation import clip_evaluation_report, dubbing_scorecard  # noqa: F401
 from foreign_whispers.vad import detect_speech_activity  # noqa: F401
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "compute_segment_metrics",
     "decide_action",
     "global_align",
+    "global_align_dp",
     "DurationAwareTTSBackend",
     "detect_speech_activity",
     "diarize_audio",
@@ -35,6 +37,7 @@ __all__ = [
     "TranslationCandidate",
     "FailureAnalysis",
     "clip_evaluation_report",
+    "dubbing_scorecard",
     "FWClient",
     "config_id",
     "BASELINE",

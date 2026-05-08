@@ -28,4 +28,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY --chown=$USERNAME:$USERNAME . .
 
+# Upgrade yt-dlp to latest to ensure YouTube JS challenge support
+RUN uv pip install --python /app/.venv -U yt-dlp
+
 USER $USERNAME
