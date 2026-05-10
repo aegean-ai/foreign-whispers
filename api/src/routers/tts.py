@@ -27,6 +27,7 @@ async def tts_endpoint(
     request: Request,
     config: str = Query(..., pattern=r"^c-[0-9a-f]{7}$"),
     alignment: bool = Query(False),
+    speaker_wav: str | None = Query(None, description="Reference voice WAV path (e.g. 'es/default.wav')"),
 ):
     """Generate TTS audio for a translated transcript.
 
@@ -57,8 +58,36 @@ async def tts_endpoint(
 
     source_path = str(trans_dir / f"{title}.json")
 
+    from foreign_whispers.voice_resolution import resolve_speaker_wav
+
+    if speaker_wav is None:
+        speaker_wav = resolve_speaker_wav(settings.speakers_dir, "es")
+
+    # Build per-speaker voice map when the transcript carries diarization labels.
+    voice_map: dict[str, str] | None = None
+    _trans_path = pathlib.Path(source_path)
+    if _trans_path.exists():
+        _trans_data = json.loads(_trans_path.read_text())
+        unique_speakers = sorted(set(
+            seg.get("speaker")
+            for seg in _trans_data.get("segments", [])
+            if seg.get("speaker")
+        ))
+        if unique_speakers:
+            # TODO: thread lang from request when frontend supports it
+            voice_map = {
+                spk: resolve_speaker_wav(settings.speakers_dir, "es", spk)
+                for spk in unique_speakers
+            }
+
     await _run_in_threadpool(
-        None, svc.text_file_to_speech, source_path, str(audio_dir), alignment=alignment
+        None,
+        svc.text_file_to_speech,
+        source_path,
+        str(audio_dir),
+        alignment=alignment,
+        speaker_wav=speaker_wav,
+        voice_map=voice_map,
     )
 
     return {

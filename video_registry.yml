@@ -30,3 +30,9 @@ videos:
     url: https://www.youtube.com/watch?v=IiBKsv-D64M
     source_language: en
     target_language: es
+
+  - id: kitchen-debate
+    title: "The Kitchen Debate"
+    url: https://archive.org/details/Greatest_Speeches_of_the_20th_Century
+    source_language: en
+    target_language: es

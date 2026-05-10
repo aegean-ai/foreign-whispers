@@ -59,12 +59,20 @@ class Settings(BaseSettings):
         return self.data_dir / "tts_audio" / self.tts_model_dir
 
     @property
-    def dubbed_videos_dir(self) -> Path:
-        return self.data_dir / "dubbed_videos"
+    def speakers_dir(self) -> Path:
+        return self.data_dir / "speakers"
+    
+    @property
+    def diarizations_dir(self) -> Path:
+        return self.data_dir / "diarizations"
 
     @property
     def dubbed_captions_dir(self) -> Path:
         return self.data_dir / "dubbed_captions"
+
+    @property
+    def dubbed_videos_dir(self) -> Path:
+        return self.data_dir / "dubbed_videos"
 
     # S3 storage
     s3_bucket: str = ""
