@@ -205,3 +205,5 @@ whisper_models/
 
 # Beads archive (migrated to Jira 2026-04-13)
 .beads-archive.zip
+*.bak
+*.bak2

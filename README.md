@@ -4,6 +4,13 @@
 
 YouTube video dubbing pipeline — transcribe, translate, and dub 60 Minutes interviews into a target language.
 
+## Demo Videos
+
+- **App Screencast**: https://youtu.be/rF-dzybeFTc — pipeline UI walkthrough
+- **Sample Input/Output**: https://youtu.be/OEs6E0bJoNw — Kitchen Debate (1959, public domain via Internet Archive), 45 seconds English → Spanish via Coqui XTTS v2
+
+Architecture details and evaluation results in [REPORT.md](REPORT.md).
+
 ## Architecture
 
 ```mermaid
@@ -16,7 +23,7 @@ flowchart LR
         DL[Download<br/>yt-dlp]
         TR[Transcribe<br/>Whisper]
         TL[Translate<br/>argostranslate]
-        TTS[Synthesize Speech<br/>Chatterbox GPU]
+        TTS[Synthesize Speech<br/>XTTS v2 / Chatterbox GPU]
         ST[Render Dubbed Video<br/>ffmpeg remux]
     end
 
@@ -49,7 +56,7 @@ flowchart LR
 Two profiles are available via Docker Compose:
 
 ```bash
-# NVIDIA GPU — Whisper + Chatterbox on dedicated GPU containers
+# NVIDIA GPU — Whisper on GPU; TTS uses Coqui XTTS v2 (in-process) or Chatterbox sidecar
 docker compose --profile nvidia up -d
 
 # CPU only — no GPU containers (STT/TTS must be provided externally)
@@ -65,7 +72,7 @@ Open **http://localhost:8501** in your browser.
 | **Download** | Fetch video + captions from YouTube via yt-dlp | `videos/`, `youtube_captions/` |
 | **Transcribe** | Speech-to-text via Whisper | `transcriptions/whisper/` |
 | **Translate** | Source → target language via argostranslate (offline, OpenNMT) | `translations/argos/` |
-| **Synthesize Speech** | TTS via Chatterbox (GPU) or Coqui (CPU fallback), time-aligned to original segments | `tts_audio/chatterbox/` |
+| **Synthesize Speech** | TTS via Coqui XTTS v2 (in-process, GPU) with automatic fallback; Chatterbox sidecar used when port 8020 is available. Audio time-aligned to original segments. | `tts_audio/chatterbox/` |
 | **Render Dubbed Video** | Replace audio track via ffmpeg remux (no re-encoding) | `dubbed_videos/` |
 
 Captions are served as WebVTT via the `<track>` element — no subtitle burn-in:
@@ -98,7 +105,7 @@ foreign-whispers/
 ├── download_video.py            # yt-dlp wrapper
 ├── transcribe.py                # Whisper wrapper
 ├── translate_en_to_es.py        # argostranslate wrapper
-├── tts_es.py                    # Chatterbox client + time-aligned TTS generation
+├── tts_es.py                    # TTS client (Chatterbox or XTTS v2) + time-aligned generation
 ├── translated_output.py         # ffmpeg audio remux + legacy subtitle compositing
 ├── pipeline_data/               # All intermediate and output files (volume-mounted)
 │   └── api/
@@ -147,7 +154,7 @@ Host machine
 │
 └── Docker Compose
     ├── foreign-whispers-stt   (GPU)  :8000  — Whisper inference
-    ├── foreign-whispers-tts   (GPU)  :8020  — Chatterbox inference
+    ├── foreign-whispers-tts   (GPU)  :8020  — Chatterbox inference (optional; XTTS v2 used as fallback)
     ├── foreign-whispers-api   (CPU)  :8080  — FastAPI orchestrator
     └── foreign-whispers-frontend      :8501  — Next.js UI
 ```
@@ -246,4 +253,4 @@ cd frontend && pnpm install && pnpm dev
 - Python 3.11
 - ffmpeg (system-wide)
 - deno (for yt-dlp YouTube extraction)
-- NVIDIA GPU recommended for Whisper + Chatterbox inference
+- NVIDIA GPU recommended for Whisper STT and Coqui XTTS v2 TTS inference

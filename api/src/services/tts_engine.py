@@ -125,11 +125,103 @@ class ChatterboxClient:
         return chunks if chunks else [text]
 
 
-def _make_tts_engine():
-    """Create TTS engine: Chatterbox API client if server is reachable, else local Coqui.
+class CoquiXTTSClient:
+    """Direct Coqui XTTS v2 client — no HTTP sidecar required.
 
-    Tries Chatterbox with a real /v1/audio/speech test call
-    to ensure the model is fully loaded before committing.
+    Wraps TTS.api.TTS with tts_models/multilingual/multi-dataset/xtts_v2.
+    Supports the same tts_to_file(text, file_path, **kwargs) interface as
+    ChatterboxClient so _synthesize_raw needs no changes.
+
+    A threading.Lock serialises synthesis calls because XTTS v2 is not
+    safe to call concurrently from multiple threads sharing one model.
+    """
+
+    _SPEAKERS_BASE = (
+        pathlib.Path(__file__).parent.parent.parent.parent / "pipeline_data" / "speakers"
+    )
+    _LANGUAGE = "es"
+    # Fallback built-in speaker when no reference WAV is available.
+    _DEFAULT_SPEAKER = "Ana Florence"
+
+    def __init__(self) -> None:
+        import functools
+        import threading
+        import torch
+
+        os.environ["COQUI_TOS_AGREED"] = "1"
+
+        # PyTorch 2.6+ rejects checkpoints with weights_only=True by default.
+        _orig_load = torch.load
+        @functools.wraps(_orig_load)
+        def _patched_load(*args, **kwargs):
+            kwargs.setdefault("weights_only", False)
+            return _orig_load(*args, **kwargs)
+        torch.load = _patched_load
+
+        # torchcodec is not installed on all pods; replace torchaudio.load with
+        # a soundfile-backed shim that returns (FloatTensor, sample_rate).
+        try:
+            import torchaudio
+            import soundfile as _sf
+            def _patched_ta_load(path, *args, **kwargs):
+                data, sr = _sf.read(str(path), dtype="float32", always_2d=True)
+                return torch.from_numpy(data.T), sr
+            torchaudio.load = _patched_ta_load
+        except ImportError:
+            pass
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"[tts] Loading Coqui XTTS v2 on {device} (first run downloads ~1.8 GB)...")
+        from TTS.api import TTS as _CoquiTTS
+        self._tts = _CoquiTTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+        self._lock = threading.Lock()
+        print(f"[tts] XTTS v2 ready on {device}")
+
+    def tts_to_file(self, text: str, file_path: str, **kwargs) -> None:
+        """Synthesize *text* and write WAV to *file_path*.
+
+        Accepts speaker_wav kwarg (relative to pipeline_data/speakers/ or
+        absolute path). Falls back to a built-in XTTS speaker when not found.
+        """
+        speaker_wav_arg = kwargs.get("speaker_wav", "")
+        wav_path: str | None = None
+
+        if speaker_wav_arg:
+            candidate = self._SPEAKERS_BASE / speaker_wav_arg
+            if candidate.exists():
+                wav_path = str(candidate)
+            else:
+                candidate2 = pathlib.Path(speaker_wav_arg)
+                if candidate2.exists():
+                    wav_path = str(candidate2)
+                else:
+                    _logging.getLogger(__name__).warning(
+                        "[tts] Speaker WAV %s not found, using built-in speaker", speaker_wav_arg
+                    )
+
+        with self._lock:
+            if wav_path:
+                self._tts.tts_to_file(
+                    text=text,
+                    speaker_wav=wav_path,
+                    language=self._LANGUAGE,
+                    file_path=file_path,
+                )
+            else:
+                self._tts.tts_to_file(
+                    text=text,
+                    speaker=self._DEFAULT_SPEAKER,
+                    language=self._LANGUAGE,
+                    file_path=file_path,
+                )
+
+
+def _make_tts_engine():
+    """Create TTS engine: Chatterbox HTTP client if reachable, else Coqui XTTS v2.
+
+    Tries Chatterbox with a real synthesis test to confirm the model is loaded.
+    Falls back to a local CoquiXTTSClient (XTTS v2) when the sidecar is absent
+    or broken — supports the same per-segment speaker_wav voice-cloning interface.
     """
     try:
         client = ChatterboxClient()
@@ -138,24 +230,9 @@ def _make_tts_engine():
         print(f"[tts] Using Chatterbox GPU server at {CHATTERBOX_API_URL}")
         return client
     except Exception as exc:
-        print(f"[tts] Chatterbox not available ({exc}), falling back to local Coqui")
+        print(f"[tts] Chatterbox not available ({exc}), falling back to Coqui XTTS v2")
 
-    # Fallback: local Coqui TTS (for dev/test without Docker)
-    import functools
-    import torch
-    from TTS.api import TTS as CoquiTTS
-    # Coqui TTS checkpoints contain classes (RAdam, defaultdict, etc.) that
-    # PyTorch 2.6+ rejects with weights_only=True.  Monkey-patch torch.load
-    # to default to weights_only=False for these trusted model files.
-    _original_torch_load = torch.load
-    @functools.wraps(_original_torch_load)
-    def _patched_load(*args, **kwargs):
-        kwargs.setdefault("weights_only", False)
-        return _original_torch_load(*args, **kwargs)
-    torch.load = _patched_load
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"[tts] Using local Coqui TTS on {device}")
-    return CoquiTTS(model_name="tts_models/es/mai/tacotron2-DDC", progress_bar=False).to(device)
+    return CoquiXTTSClient()
 
 
 _tts_engine = None
@@ -346,26 +423,43 @@ def _write_align_report(
     metrics: list,
     aligned: list,
     segment_details: list,
+    alignment_enabled: bool = True,
 ) -> None:
     """Write a {stem}.align.json sidecar with evaluation metrics and per-segment detail.
 
     segment_details is a list of dicts: [{raw_duration_s, speed_factor, action, text}, ...]
     Written next to the WAV so both baseline and aligned runs produce comparable files.
     """
-    try:
-        from foreign_whispers.evaluation import clip_evaluation_report
-        summary = clip_evaluation_report(metrics, aligned)
-    except Exception as exc:
-        _logging.getLogger(__name__).warning("clip_evaluation_report failed: %s", exc)
+    if alignment_enabled:
+        try:
+            from foreign_whispers.evaluation import clip_evaluation_report
+            summary = clip_evaluation_report(metrics, aligned)
+        except Exception as exc:
+            _logging.getLogger(__name__).warning("clip_evaluation_report failed: %s", exc)
+            summary = {
+                "mean_abs_duration_error_s": 0.0,
+                "pct_severe_stretch": 0.0,
+                "n_gap_shifts": 0,
+                "n_translation_retries": 0,
+                "total_cumulative_drift_s": 0.0,
+            }
+    else:
+        # Baseline mode: alignment wasn't run, so compute MAE directly from segment durations.
+        errors = [
+            abs(d["raw_duration_s"] - d["target_sec"])
+            for d in segment_details
+            if d.get("target_sec", 0) > 0
+        ]
+        mae = round(sum(errors) / len(errors), 3) if errors else 0.0
         summary = {
-            "mean_abs_duration_error_s": 0.0,
+            "mean_abs_duration_error_s": mae,
             "pct_severe_stretch": 0.0,
             "n_gap_shifts": 0,
             "n_translation_retries": 0,
             "total_cumulative_drift_s": 0.0,
         }
 
-    report = {**summary, "alignment_enabled": _ALIGNMENT_ENABLED, "segments": segment_details}
+    report = {**summary, "alignment_enabled": alignment_enabled, "segments": segment_details}
     sidecar_path = pathlib.Path(output_path) / f"{stem}.align.json"
     sidecar_path.write_text(json.dumps(report, indent=2))
 
@@ -520,6 +614,12 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
             )
 
             aligned_seg = m["aligned_seg"]
+            if aligned_seg and hasattr(aligned_seg, "action"):
+                action = aligned_seg.action.value
+            elif use_alignment:
+                action = "unknown"
+            else:
+                action = "baseline"
             segment_details.append({
                 "index": i,
                 "text": m["text"],
@@ -527,7 +627,7 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
                 "stretch_factor": round(m["stretch_factor"], 3),
                 "raw_duration_s": round(seg_raw_duration, 3),
                 "speed_factor": round(seg_speed_factor, 3),
-                "action": aligned_seg.action.value if aligned_seg and hasattr(aligned_seg, "action") else "unknown",
+                "action": action,
             })
 
             if seg_audio is not None:
@@ -538,7 +638,8 @@ def text_file_to_speech(source_path, output_path, tts_engine=None, *, alignment=
         combined.export(str(save_path), format="wav")
 
     stem = pathlib.Path(source_path).stem
-    _write_align_report(str(output_path), stem, _metrics_list, _aligned_list, segment_details)
+    _write_align_report(str(output_path), stem, _metrics_list, _aligned_list, segment_details,
+                        alignment_enabled=use_alignment)
 
     print("success!")
     return None
